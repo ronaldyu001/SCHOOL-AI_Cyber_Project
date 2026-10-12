@@ -40,6 +40,8 @@ ____ src
 
 ### Launching the Stack
 
+> Docker Files and Compose takes care of environment setup.
+
 From the repository root:
 
 ```Shell
@@ -53,6 +55,8 @@ Open `http://localhost:5173`. Stop the stack with `docker compose down`.
 ---
 
 ### Setting Up Your Environment
+
+> Only relevant if wanting to test services without Docker orchestration.
 
 **Linux**
 
@@ -78,7 +82,9 @@ python -m pip install pip-tools
 
 ### Managing Your Environment
 
-Once the environment is created, we'll be using a shared list of dependencies to make sure our environments match.
+> Docker takes care of dependency installation during the build phase.
+
+We'll be using a shared list of dependencies to make sure our environments match.
 
 `requirements.in`: **Manually** edited list of libraries.
 
