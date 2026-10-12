@@ -1,5 +1,9 @@
 # Collaboration Guidelines
 
+### Contributing
+
+- Feature branches are preferred.
+
 ### Language
 
 Python 3.12
@@ -48,7 +52,7 @@ Once the environment is created, we'll be using a shared list of dependencies to
 
 ### Repo Structure
 
-
+WIP
 
 ### Documentation
 
