@@ -54,6 +54,23 @@ Open `http://localhost:5173`. Stop the stack with `docker compose down`.
 
 ---
 
+### Setting Up the Frontend
+
+> Only relevant when running the frontend without Docker.
+
+Install Node.js 20.19+ (or 22.12+) and npm. From the repository root:
+
+```Shell
+cd src/frontend
+
+npm ci
+npm run dev
+```
+
+Open `http://localhost:5173`.
+
+---
+
 ### Setting Up Your Environment
 
 > Only relevant if wanting to test services without Docker orchestration.
