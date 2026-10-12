@@ -83,7 +83,7 @@ python -m pip install pip-tools
 ### Managing Your Environment
 
 > Docker takes care of dependency installation during the build phase.
-> Pip installing to your environment if testing services without Docker orchestration.
+> Pip install to your environment if testing services without Docker orchestration.
 
 We'll be using a shared list of dependencies to make sure our environments match.
 
