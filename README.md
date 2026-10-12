@@ -1,12 +1,56 @@
 # Collaboration Guidelines
 
-### Contributing
+---
 
-- Feature branches are preferred.
+**Contributing**: Feature branches are preferred when relevant.
 
-### Language
+**Language**: Python 3.12
 
-Python 3.12
+**Documentation**: Documentation is guidelined in`Documentation/README.md`
+
+---
+
+### Repo Structure
+
+```
+____ Documentation
+  |
+  |____ Datasets_And_Models
+
+____ src
+  |
+  |____ backend
+  |
+  |____ deployment
+  |
+  |____ frontend
+```
+
+#### Folder Content
+
+`Documentation/`: Project, dataset, and model documentation.
+
+`src/backend/`: Python backend source and dependencies.
+
+`src/deployment/`: Docker Compose orchestration.
+
+`src/frontend/`: React and TypeScript frontend.
+
+---
+
+### Launching the Stack
+
+From the repository root:
+
+```Shell
+cd src/deployment
+
+docker compose up --build
+```
+
+Open `http://localhost:5173`. Stop the stack with `docker compose down`.
+
+---
 
 ### Setting Up Your Environment
 
@@ -30,6 +74,8 @@ py -3.12 -m venv .venv
 python -m pip install pip-tools
 ```
 
+---
+
 ### Managing Your Environment
 
 Once the environment is created, we'll be using a shared list of dependencies to make sure our environments match.
@@ -50,10 +96,4 @@ Once the environment is created, we'll be using a shared list of dependencies to
 - requirements.txt contains all package dependencies as well as pinned versioning (**messy** to read and edit).
 - requirements.in should just be the top level packages and high level versioning information, making it **easy to manage** the libraries that matter, and make any version changes easily.
 
-### Repo Structure
-
-WIP
-
-### Documentation
-
-Documentation is guidelined in: `Documentation/README.md`
+---
