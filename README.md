@@ -45,7 +45,7 @@ From the repository root:
 ```Shell
 cd src/deployment
 
-docker compose up --build
+docker compose up --build -d	# -- build forces the docker services to rebuild. -d runs detached so it doesn't hog your terminal.
 ```
 
 Open `http://localhost:5173`. Stop the stack with `docker compose down`.
