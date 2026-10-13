@@ -1,6 +1,5 @@
 # _____ Backend _____
-.venv
-
+.venv*
 
 
 # _____ Frontend _____
@@ -29,3 +28,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+
+
+# _____ Misc _____
+.python*
