@@ -123,3 +123,8 @@ We'll be using a shared list of dependencies to make sure our environments match
 - requirements.in should just be the top level packages and high level versioning information, making it **easy to manage** the libraries that matter, and make any version changes easily.
 
 ---
+
+### Data Preprocessing and Model Training
+
+- This will be done via `Jupyter notebooks`.
+- Dependencies are managed in the `Training/requirements.in` in the same way mentioned above, so a single Jupyter kernel can be used across all notebooks.
