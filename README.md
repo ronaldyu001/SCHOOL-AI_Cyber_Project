@@ -34,7 +34,7 @@ ____ Training
 
 `Documentation/`: Project, dataset, and model documentation.
 
-`Training/`: Data preprocessing, model training, documentation. Jupyter notebooks capture all three.
+`Training/`: This is where data preprocessing, model training, and documentation is done via Jupyter notebooks.
 
 `src/backend/`: Python backend source and dependencies.
 
@@ -125,10 +125,3 @@ We'll be using a shared list of dependencies to make sure our environments match
 - Doing a pip-compile **automatically resolves version compatability** between a library and its dependencies.
 - requirements.txt contains all package dependencies as well as pinned versioning (**messy** to read and edit).
 - requirements.in should just be the top level packages and high level versioning information, making it **easy to manage** the libraries that matter, and make any version changes easily.
-
----
-
-### Data Preprocessing and Model Training
-
-- This will be done via `Jupyter notebooks`.
-- Dependencies are managed in the `Training/requirements.in` in the same way mentioned above, so a single Jupyter kernel can be used across all notebooks.
