@@ -30,6 +30,8 @@ ____ src
 
 `Documentation/`: Project, dataset, and model documentation.
 
+`Training/`: Data preprocessing, model training, documentation. Jupyter notebooks capture all three.
+
 `src/backend/`: Python backend source and dependencies.
 
 `src/deployment/`: Docker Compose orchestration.
