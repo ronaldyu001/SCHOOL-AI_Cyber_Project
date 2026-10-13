@@ -24,6 +24,10 @@ ____ src
   |____ deployment
   |
   |____ frontend
+
+____ Training
+  |
+  |...
 ```
 
 #### Folder Content
