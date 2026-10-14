@@ -4,70 +4,437 @@
 #
 #    pip-compile requirements.in
 #
---extra-index-url https://download.pytorch.org/whl/cu121
-
+anyio==4.12.1
+    # via
+    #   httpx
+    #   jupyter-server
+appnope==1.0.0
+    # via ipykernel
+argon2-cffi==25.1.0
+    # via jupyter-server
+argon2-cffi-bindings==25.1.0
+    # via argon2-cffi
+arrow==1.4.0
+    # via isoduration
+asttokens==3.0.2
+    # via stack-data
+async-lru==2.0.5
+    # via jupyterlab
+attrs==26.1.0
+    # via
+    #   jsonschema
+    #   referencing
+babel==2.18.0
+    # via jupyterlab-server
+beautifulsoup4==4.15.0
+    # via nbconvert
+bleach[css]==6.2.0
+    # via nbconvert
+certifi==2026.7.22
+    # via
+    #   httpcore
+    #   httpx
+    #   requests
+cffi==2.0.0
+    # via argon2-cffi-bindings
+charset-normalizer==3.5.2
+    # via requests
+comm==0.2.3
+    # via
+    #   ipykernel
+    #   ipywidgets
 contourpy==1.3.0
     # via matplotlib
 cycler==0.12.1
     # via matplotlib
-dpkt==1.9.8
+debugpy==1.8.21
+    # via ipykernel
+decorator==5.3.1
+    # via ipython
+defusedxml==0.7.1
+    # via nbconvert
+delu==0.0.26
     # via -r requirements.in
+docutils==0.23
+    # via flit
+exceptiongroup==1.3.1
+    # via
+    #   anyio
+    #   ipython
+    #   pytest
+executing==2.3.0
+    # via stack-data
+fastjsonschema==2.21.2
+    # via nbformat
 filelock==3.19.1
     # via torch
+flit==4.1.0
+    # via -r requirements.in
+flit-core==4.1.0
+    # via flit
 fonttools==4.60.2
     # via matplotlib
+fqdn==1.6.0
+    # via jsonschema
 fsspec==2025.10.0
     # via torch
+h11==0.16.0
+    # via httpcore
+httpcore==1.0.9
+    # via httpx
+httpx==0.28.1
+    # via jupyterlab
+idna==3.20
+    # via
+    #   anyio
+    #   httpx
+    #   jsonschema
+    #   requests
+importlib-metadata==8.7.1
+    # via
+    #   jupyter-client
+    #   jupyter-lsp
+    #   jupyterlab
+    #   jupyterlab-server
+    #   nbconvert
 importlib-resources==6.5.2
     # via matplotlib
-jinja2==3.1.6
-    # via torch
-kiwisolver==1.4.7
-    # via matplotlib
-markupsafe==3.0.4
-    # via jinja2
-matplotlib==3.9.4
+iniconfig==2.1.0
+    # via pytest
+ipykernel==6.31.0
+    # via jupyterlab
+ipython==8.18.1
     # via
     #   -r requirements.in
-    #   seaborn
+    #   ipykernel
+    #   ipywidgets
+ipywidgets==8.1.9
+    # via -r requirements.in
+isoduration==20.11.0
+    # via jsonschema
+jedi==0.19.2
+    # via ipython
+jinja2==3.1.6
+    # via
+    #   jupyter-server
+    #   jupyterlab
+    #   jupyterlab-server
+    #   nbconvert
+    #   pdoc
+    #   torch
+joblib==1.5.3
+    # via scikit-learn
+json5==0.17.3
+    # via jupyterlab-server
+jsonpointer==3.0.0
+    # via jsonschema
+jsonschema[format-nongpl]==4.25.1
+    # via
+    #   jupyter-events
+    #   jupyterlab-server
+    #   nbformat
+jsonschema-specifications==2025.9.1
+    # via jsonschema
+jupyter-client==8.6.3
+    # via
+    #   ipykernel
+    #   jupyter-server
+    #   nbclient
+jupyter-core==5.8.1
+    # via
+    #   ipykernel
+    #   jupyter-client
+    #   jupyter-server
+    #   jupyterlab
+    #   nbclient
+    #   nbconvert
+    #   nbformat
+jupyter-events==0.12.1
+    # via jupyter-server
+jupyter-lsp==2.3.1
+    # via jupyterlab
+jupyter-server==2.18.2
+    # via
+    #   jupyter-lsp
+    #   jupyterlab
+    #   jupyterlab-server
+    #   notebook
+    #   notebook-shim
+jupyter-server-terminals==0.5.4
+    # via jupyter-server
+jupyterlab==4.5.11
+    # via
+    #   -r requirements.in
+    #   notebook
+jupyterlab-pygments==0.3.0
+    # via nbconvert
+jupyterlab-server==2.28.0
+    # via
+    #   jupyterlab
+    #   notebook
+jupyterlab-widgets==3.0.17
+    # via ipywidgets
+kiwisolver==1.4.7
+    # via matplotlib
+lark==1.3.1
+    # via rfc3987-syntax
+librt==0.16.0
+    # via mypy
+markupsafe==3.0.4
+    # via
+    #   jinja2
+    #   nbconvert
+    #   pdoc
+matplotlib==3.9.4
+    # via -r requirements.in
+matplotlib-inline==0.2.2
+    # via
+    #   ipykernel
+    #   ipython
+mistune==3.3.4
+    # via nbconvert
 mpmath==1.3.0
     # via sympy
+mypy==1.19.1
+    # via -r requirements.in
+mypy-extensions==1.1.0
+    # via mypy
+nbclient==0.10.2
+    # via nbconvert
+nbconvert==7.17.2
+    # via jupyter-server
+nbformat==5.10.4
+    # via
+    #   jupyter-server
+    #   nbclient
+    #   nbconvert
+nest-asyncio==1.6.0
+    # via ipykernel
 networkx==3.2.1
     # via torch
-numpy==2.0.2
+notebook==7.5.8
+    # via -r requirements.in
+notebook-shim==0.2.4
+    # via
+    #   jupyterlab
+    #   notebook
+numpy==1.26.4
     # via
     #   -r requirements.in
     #   contourpy
+    #   delu
     #   matplotlib
     #   pandas
-    #   seaborn
+    #   scikit-learn
+    #   scipy
+overrides==7.7.0
+    # via jupyter-server
 packaging==26.3
-    # via matplotlib
-pandas==2.2.3
     # via
-    #   -r requirements.in
-    #   seaborn
+    #   ipykernel
+    #   jupyter-events
+    #   jupyter-server
+    #   jupyterlab
+    #   jupyterlab-server
+    #   matplotlib
+    #   nbconvert
+    #   pytest
+pandas==2.3.3
+    # via -r requirements.in
+pandocfilters==1.5.1
+    # via nbconvert
+parso==0.8.7
+    # via jedi
+pathspec==1.1.1
+    # via mypy
+pdoc==15.0.4
+    # via -r requirements.in
+pexpect==4.9.0
+    # via ipython
 pillow==11.3.0
     # via matplotlib
+platformdirs==4.4.0
+    # via jupyter-core
+pluggy==1.6.0
+    # via pytest
+pre-commit-hooks==6.0.0
+    # via -r requirements.in
+prometheus-client==0.26.0
+    # via jupyter-server
+prompt-toolkit==3.0.52
+    # via ipython
+psutil==7.2.2
+    # via ipykernel
+ptyprocess==0.7.0
+    # via
+    #   pexpect
+    #   terminado
+pure-eval==0.2.4
+    # via stack-data
+pycparser==2.23
+    # via cffi
+pygments==2.21.0
+    # via
+    #   ipython
+    #   nbconvert
+    #   pdoc
+    #   pytest
 pyparsing==3.3.3
     # via matplotlib
+pytest==8.4.2
+    # via -r requirements.in
 python-dateutil==2.9.0.post0
     # via
+    #   arrow
+    #   jupyter-client
     #   matplotlib
     #   pandas
+python-json-logger==4.0.0
+    # via jupyter-events
 pytz==2026.5
     # via pandas
-seaborn==0.13.2
+pyyaml==6.0.3
+    # via jupyter-events
+pyzmq==27.2.0
+    # via
+    #   ipykernel
+    #   jupyter-client
+    #   jupyter-server
+referencing==0.36.2
+    # via
+    #   jsonschema
+    #   jsonschema-specifications
+    #   jupyter-events
+requests==2.32.5
+    # via
+    #   flit
+    #   jupyterlab-server
+rfc3339-validator==0.1.4
+    # via
+    #   jsonschema
+    #   jupyter-events
+rfc3986-validator==0.1.1
+    # via
+    #   jsonschema
+    #   jupyter-events
+rfc3987-syntax==1.1.0
+    # via jsonschema
+rpds-py==0.27.1
+    # via
+    #   jsonschema
+    #   referencing
+rtdl-num-embeddings==0.0.12
+    # via tabm
+ruamel-yaml==0.19.1
+    # via pre-commit-hooks
+ruff==0.17.0
     # via -r requirements.in
+scikit-learn==1.6.1
+    # via -r requirements.in
+scipy==1.13.1
+    # via scikit-learn
+send2trash==2.1.0
+    # via jupyter-server
 six==1.17.0
-    # via python-dateutil
-sympy==1.13.1
+    # via
+    #   python-dateutil
+    #   rfc3339-validator
+soupsieve==2.8.4
+    # via beautifulsoup4
+stack-data==0.6.3
+    # via ipython
+sympy==1.14.0
     # via torch
-torch==2.5.1
+tabm==0.0.3
     # via -r requirements.in
+terminado==0.18.1
+    # via
+    #   jupyter-server
+    #   jupyter-server-terminals
+threadpoolctl==3.7.0
+    # via scikit-learn
+tinycss2==1.4.0
+    # via bleach
+tomli==2.5.0
+    # via
+    #   jupyterlab
+    #   mypy
+    #   pre-commit-hooks
+    #   pytest
+tomli-w==1.2.0
+    # via flit
+torch==2.8.0
+    # via
+    #   delu
+    #   rtdl-num-embeddings
+    #   tabm
+tornado==6.5.10
+    # via
+    #   ipykernel
+    #   jupyter-client
+    #   jupyter-server
+    #   jupyterlab
+    #   notebook
+    #   terminado
+tqdm==4.70.1
+    # via -r requirements.in
+traitlets==5.15.1
+    # via
+    #   ipykernel
+    #   ipython
+    #   ipywidgets
+    #   jupyter-client
+    #   jupyter-core
+    #   jupyter-events
+    #   jupyter-server
+    #   jupyterlab
+    #   matplotlib-inline
+    #   nbclient
+    #   nbconvert
+    #   nbformat
 typing-extensions==4.16.0
-    # via torch
+    # via
+    #   anyio
+    #   async-lru
+    #   beautifulsoup4
+    #   exceptiongroup
+    #   ipython
+    #   jupyterlab
+    #   mistune
+    #   mypy
+    #   python-json-logger
+    #   referencing
+    #   tabm
+    #   torch
+typos==1.51.1
+    # via -r requirements.in
 tzdata==2026.5
-    # via pandas
+    # via
+    #   arrow
+    #   pandas
+uri-template==1.3.0
+    # via jsonschema
+urllib3==2.6.3
+    # via requests
+wcwidth==0.9.2
+    # via prompt-toolkit
+webcolors==24.11.1
+    # via jsonschema
+webencodings==0.5.1
+    # via
+    #   bleach
+    #   tinycss2
+websocket-client==1.9.0
+    # via jupyter-server
+widgetsnbextension==4.0.16
+    # via ipywidgets
+xdoctest==1.3.2
+    # via -r requirements.in
 zipp==3.23.1
-    # via importlib-resources
+    # via
+    #   importlib-metadata
+    #   importlib-resources
+
+# The following packages are considered to be unsafe in a requirements file:
+# pip
+# setuptools

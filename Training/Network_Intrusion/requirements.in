@@ -1,8 +1,28 @@
---extra-index-url https://download.pytorch.org/whl/cu121
+# Dependencies grabbed from the tabm repo.
 
-torch==2.5.1
-pandas==2.2.3
-numpy==2.0.2
-dpkt==1.9.8
-matplotlib==3.9.4
-seaborn==0.13.2
+# TabM model (installs torch, rtdl_num_embeddings, and typing_extensions).
+tabm==0.0.3
+
+# Data processing and training utilities.
+delu>=0.0.26
+matplotlib>=3.9.4
+numpy>=1.26.4,<2
+pandas>=2.2.3
+scikit-learn>=1.6.1
+tqdm>=4.67.1
+
+# Interactive notebooks.
+ipython>=8.18.1
+ipywidgets>=8.1.5
+jupyterlab>=4.3.6
+notebook>=7.3.3
+
+# Development, documentation, and testing (from TabM's dev dependency group).
+flit>=3.12.0
+mypy>=1.15.0
+pdoc>=15.0.1
+pre-commit-hooks>=5.0.0
+pytest>=8.3.5
+ruff>=0.11.4
+typos>=1.31.1
+xdoctest>=1.2.0
