@@ -324,7 +324,9 @@ rpds-py==0.27.1
     #   jsonschema
     #   referencing
 rtdl-num-embeddings==0.0.12
-    # via tabm
+    # via
+    #   -r requirements.in
+    #   tabm
 ruamel-yaml==0.19.1
     # via pre-commit-hooks
 ruff==0.17.0
@@ -365,6 +367,7 @@ tomli-w==1.2.0
     # via flit
 torch==2.8.0
     # via
+    #   -r requirements.in
     #   delu
     #   rtdl-num-embeddings
     #   tabm
@@ -394,6 +397,7 @@ traitlets==5.15.1
     #   nbformat
 typing-extensions==4.16.0
     # via
+    #   -r requirements.in
     #   anyio
     #   async-lru
     #   beautifulsoup4
