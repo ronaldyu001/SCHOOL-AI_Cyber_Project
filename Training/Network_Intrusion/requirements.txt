@@ -39,6 +39,8 @@ cffi==2.0.0
     # via argon2-cffi-bindings
 charset-normalizer==3.5.2
     # via requests
+click==8.1.8
+    # via skimpy
 comm==0.2.3
     # via
     #   ipykernel
@@ -97,12 +99,15 @@ importlib-metadata==8.7.1
     #   jupyterlab
     #   jupyterlab-server
     #   nbconvert
+    #   typeguard
 importlib-resources==6.5.2
     # via matplotlib
 iniconfig==2.1.0
     # via pytest
 ipykernel==6.31.0
-    # via jupyterlab
+    # via
+    #   jupyterlab
+    #   skimpy
 ipython==8.18.1
     # via
     #   -r requirements.in
@@ -180,6 +185,8 @@ lark==1.3.1
     # via rfc3987-syntax
 librt==0.16.0
     # via mypy
+markdown-it-py==3.0.0
+    # via rich
 markupsafe==3.0.4
     # via
     #   jinja2
@@ -191,6 +198,8 @@ matplotlib-inline==0.2.2
     # via
     #   ipykernel
     #   ipython
+mdurl==0.1.2
+    # via markdown-it-py
 mistune==3.3.4
     # via nbconvert
 mpmath==1.3.0
@@ -225,8 +234,10 @@ numpy==1.26.4
     #   delu
     #   matplotlib
     #   pandas
+    #   pyarrow
     #   scikit-learn
     #   scipy
+    #   skimpy
 overrides==7.7.0
     # via jupyter-server
 packaging==26.3
@@ -240,7 +251,9 @@ packaging==26.3
     #   nbconvert
     #   pytest
 pandas==2.3.3
-    # via -r requirements.in
+    # via
+    #   -r requirements.in
+    #   skimpy
 pandocfilters==1.5.1
     # via nbconvert
 parso==0.8.7
@@ -257,6 +270,8 @@ platformdirs==4.4.0
     # via jupyter-core
 pluggy==1.6.0
     # via pytest
+polars==0.20.31
+    # via skimpy
 pre-commit-hooks==6.0.0
     # via -r requirements.in
 prometheus-client==0.26.0
@@ -271,6 +286,8 @@ ptyprocess==0.7.0
     #   terminado
 pure-eval==0.2.4
     # via stack-data
+pyarrow==16.1.0
+    # via skimpy
 pycparser==2.23
     # via cffi
 pygments==2.21.0
@@ -279,6 +296,8 @@ pygments==2.21.0
     #   nbconvert
     #   pdoc
     #   pytest
+    #   rich
+    #   skimpy
 pyparsing==3.3.3
     # via matplotlib
 pytest==8.4.2
@@ -319,6 +338,8 @@ rfc3986-validator==0.1.1
     #   jupyter-events
 rfc3987-syntax==1.1.0
     # via jsonschema
+rich==13.9.4
+    # via skimpy
 rpds-py==0.27.1
     # via
     #   jsonschema
@@ -341,6 +362,8 @@ six==1.17.0
     # via
     #   python-dateutil
     #   rfc3339-validator
+skimpy==0.0.15
+    # via -r requirements.in
 soupsieve==2.8.4
     # via beautifulsoup4
 stack-data==0.6.3
@@ -395,6 +418,8 @@ traitlets==5.15.1
     #   nbclient
     #   nbconvert
     #   nbformat
+typeguard==4.2.1
+    # via skimpy
 typing-extensions==4.16.0
     # via
     #   -r requirements.in
@@ -408,8 +433,10 @@ typing-extensions==4.16.0
     #   mypy
     #   python-json-logger
     #   referencing
+    #   rich
     #   tabm
     #   torch
+    #   typeguard
 typos==1.51.1
     # via -r requirements.in
 tzdata==2026.5
