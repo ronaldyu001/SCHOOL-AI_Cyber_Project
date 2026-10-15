@@ -193,7 +193,9 @@ markupsafe==3.0.4
     #   nbconvert
     #   pdoc
 matplotlib==3.9.4
-    # via -r requirements.in
+    # via
+    #   -r requirements.in
+    #   seaborn
 matplotlib-inline==0.2.2
     # via
     #   ipykernel
@@ -237,6 +239,7 @@ numpy==1.26.4
     #   pyarrow
     #   scikit-learn
     #   scipy
+    #   seaborn
     #   skimpy
 overrides==7.7.0
     # via jupyter-server
@@ -253,6 +256,7 @@ packaging==26.3
 pandas==2.3.3
     # via
     #   -r requirements.in
+    #   seaborn
     #   skimpy
 pandocfilters==1.5.1
     # via nbconvert
@@ -356,6 +360,8 @@ scikit-learn==1.6.1
     # via -r requirements.in
 scipy==1.13.1
     # via scikit-learn
+seaborn==0.13.2
+    # via -r requirements.in
 send2trash==2.1.0
     # via jupyter-server
 six==1.17.0

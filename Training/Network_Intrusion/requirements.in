@@ -13,6 +13,7 @@ numpy>=1.26.4,<2
 pandas>=2.2.3
 scikit-learn>=1.6.1
 tqdm>=4.67.1
+seaborn
 
 # Interactive notebooks.
 ipython>=8.18.1
