@@ -1,0 +1,7 @@
+pandas>=2.2.3,<3
+scikit-learn
+matplotlib
+torch
+transformers
+jupyter
+skimpy==0.0.15
