@@ -1,0 +1,73 @@
+/*
+ * Design tokens. Every colour, space and radius used in the app resolves here.
+ *
+ * Colours are declared once with light-dark(), so the active theme is decided
+ * by `color-scheme` alone: the media default below, or an explicit
+ * data-theme on <html> once the user picks one from the header toggle.
+ */
+:root {
+  color-scheme: light dark;
+
+  /* Neutrals */
+  --surface: light-dark(#ffffff, #15181c);
+  --surface-sunken: light-dark(#f6f7f9, #0f1216);
+  --surface-raised: light-dark(#ffffff, #1b1f24);
+  --surface-hover: light-dark(#f1f3f5, #22272d);
+  --border: light-dark(#dde1e6, #2d343b);
+  --border-strong: light-dark(#c1c7cd, #41494f);
+
+  /* Text */
+  --text: light-dark(#16191d, #e8ebed);
+  --text-muted: light-dark(#596673, #a4aeb8);
+  --text-faint: light-dark(#7b8794, #828d98);
+  --text-on-accent: light-dark(#ffffff, #0c1116);
+
+  /* Accent: a single restrained steel blue. */
+  --accent: light-dark(#19567d, #7db7dc);
+  --accent-hover: light-dark(#124867, #9ccbe9);
+  --accent-soft: light-dark(#e8f0f6, #16293a);
+  --accent-border: light-dark(#a9c6d9, #2f4f68);
+
+  /* Status */
+  --ok: light-dark(#1a6b45, #5fcb92);
+  --ok-soft: light-dark(#e6f3ec, #122820);
+  --warn: light-dark(#7a5300, #e0b35c);
+  --warn-soft: light-dark(#fbf2dc, #2a2213);
+  --danger: light-dark(#a4231c, #f08b84);
+  --danger-soft: light-dark(#fceceb, #2d1817);
+
+  /* Spacing scale: 4px increments. */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 8px;
+
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+
+  --content-width: 68rem;
+}
+
+/* An explicit choice pins the scheme, which also switches native controls
+   such as the rows select and the number inputs. */
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}

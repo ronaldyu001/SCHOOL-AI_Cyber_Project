@@ -14,5 +14,7 @@ RUN npm run build
 FROM nginx:alpine AS runtime
 
 COPY --from=build /app/dist /usr/share/nginx/html
+# Serves the SPA fallback and proxies /api to the backend service.
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80

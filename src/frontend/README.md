@@ -1,75 +1,110 @@
-# React + TypeScript + Vite
+# Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + TypeScript + Vite console for the dataset API in `src/backend`.
 
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Layout
 
 ```
+src/
+  api/        Typed client for the dataset endpoints (mirrors the backend schemas)
+  app/        Root navigator (persistent header) and route table
+  components/ Shared primitives: button, badge, status note, step card, record table
+  pages/      Task selection (landing) and the per-task dataset workspace
+  styles/     Design tokens and global styles
+  tasks/      Task catalog and record-to-table mapping
+```
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+Routes:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+| Path | Page |
+| --- | --- |
+| `/` | Task selection (landing) |
+| `/tasks/:slug` | Dataset pipeline for that task |
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Running it
 
+The backend has no CORS middleware, so the app calls a relative `/api` path and
+the Vite dev server proxies it. Start both:
+
+```Shell
+cd src/backend
+.venv/bin/uvicorn main:app --port 8000
+```
+
+```Shell
+cd src/frontend
+npm ci
+npm run dev
+```
+
+Open `http://localhost:5173`.
+
+Override the proxy upstream with `BACKEND_URL`, or bypass the proxy entirely by
+setting `VITE_API_BASE_URL` to an absolute API URL.
+
+## Theming
+
+Colours are declared once in `src/styles/tokens.css` with `light-dark()`, so the
+active theme follows `color-scheme`. The app tracks the operating system until
+the header toggle is used; the choice is then pinned as `data-theme` on `<html>`
+and remembered in `localStorage`. A small inline script in `index.html` applies
+it before first paint so a pinned dark theme does not flash light.
+
+Because the theme is driven by `color-scheme` rather than classes, native
+controls (the rows select, the split number inputs) switch with it.
+
+## Pipeline
+
+Each task page walks the dataset endpoints in order. A step unlocks only once
+the one before it has run:
+
+1. `POST /datasets/{task}/load`
+2. `POST /datasets/{task}/{id}/clean`
+3. `POST /datasets/{task}/{id}/splits`
+4. `POST /datasets/{task}/{id}/prepare`
+5. `POST /datasets/{task}/{id}/preprocess`
+
+The records panel reads `GET .../prepared/{prepared_id}/{partition}` and
+`GET .../preprocessed/{preprocessed_id}`, and `Unload dataset` sends
+`DELETE /datasets/{task}/{id}`.
+
+Notes:
+
+- Network intrusion preprocessing returns 409 until a fitted preprocessor is
+  passed to `create_app()`. The UI shows that as a warning, not a failure.
+- Malware detection is listed but disabled: the backend exposes no router for it.
+- Pipeline state lives in component state, so reloading the page starts over.
+  The backend session stays in memory until it is unloaded or the API restarts.
+
+## Docker
+
+`src/deployment/compose.yml` runs both services:
+
+```Shell
+cd src/deployment
+docker compose up --build -d
+```
+
+Open `http://localhost:5173`. Stop with `docker compose down`.
+
+The frontend image serves the bundle through nginx using `nginx.conf`, which
+does two things the stock config does not:
+
+- `try_files $uri $uri/ /index.html` so client-side routes such as
+  `/tasks/phishing_detection` survive a direct load or a refresh. Paths under
+  `/assets/` are excluded, so a missing bundle 404s instead of returning HTML.
+- `proxy_pass http://backend:8000/` for `/api/`, with the trailing slash
+  stripping the prefix. Read timeouts are raised to 300s because loading and
+  preparing a dataset reads the whole CSV in one request.
+
+The backend is only reachable inside the compose network; nginx is the single
+published entry point. The frontend waits on the backend's healthcheck, so
+nginx never starts before its upstream resolves.
+
+To reach the API directly while debugging, add a port mapping to the backend
+service:
+
+```yaml
+    ports:
+      - "8000:8000"
 ```

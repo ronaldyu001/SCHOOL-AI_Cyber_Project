@@ -1,0 +1,78 @@
+.records {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.records__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.records__table th,
+.records__table td {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+
+.records__table thead th {
+  position: sticky;
+  top: 0;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background: var(--surface-sunken);
+}
+
+.records__table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.records__table tbody tr:hover {
+  background: var(--surface-hover);
+}
+
+.records__index {
+  color: var(--text-faint);
+}
+
+.records__cell--number {
+  text-align: right;
+}
+
+.records__table td.records__cell--text {
+  white-space: normal;
+}
+
+/* A table cell ignores max-width in auto layout, so the text is constrained
+   by a block-level wrapper instead. */
+.records__text {
+  display: block;
+  max-width: 34rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.records__toggle {
+  display: block;
+  margin-top: var(--space-1);
+  padding: 0;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--accent);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.records__empty {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
