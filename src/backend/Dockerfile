@@ -1,10 +1,22 @@
-FROM python:3.12.15-slim
+# Build
+FROM python:3.12.15-slim AS build
 
 WORKDIR /app
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 
+RUN python -m venv /opt/venv
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
+
+
+# Runtime
+FROM python:3.12.15-slim AS runtime
+
+WORKDIR /app
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+COPY --from=build /opt/venv /opt/venv
 
 # Includes the immutable .data directory; files are read only on explicit load.
 COPY . ./

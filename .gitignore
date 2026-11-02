@@ -34,3 +34,6 @@ dist-ssr
 # _____ Misc _____
 .data
 .models
+__pycache__/
+*.py[cod]
+tests
