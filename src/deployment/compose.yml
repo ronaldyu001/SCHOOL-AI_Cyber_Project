@@ -1,4 +1,19 @@
 services:
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+      target: runtime
+    # Reached only through the frontend's /api proxy, so no published port.
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/openapi.json')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
   frontend:
     build:
       context: ../frontend
@@ -6,3 +21,6 @@ services:
       target: runtime
     ports:
       - "5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
