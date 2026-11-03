@@ -1,7 +1,7 @@
 /** Scrollable table of dataset records, with long text collapsed per row. */
 import { useState } from 'react';
 import type { TaskDescriptor } from '../tasks/catalog';
-import { buildTable, formatCell } from '../tasks/records';
+import { buildTable, formatCell, formatTokens } from '../tasks/records';
 import { Badge } from './ui';
 import './RecordTable.css';
 
@@ -78,6 +78,23 @@ export function RecordTable({ task, records, offset }: RecordTableProps) {
                           {isOpen ? 'Show less' : 'Show more'}
                         </button>
                       ) : null}
+                    </td>
+                  );
+                }
+
+                if (column.kind === 'hash') {
+                  const hash = formatCell(value);
+                  return (
+                    <td key={column.key} className="records__cell--hash mono" title={hash}>
+                      {hash.length > 16 ? `${hash.slice(0, 16)}…` : hash}
+                    </td>
+                  );
+                }
+
+                if (column.kind === 'bytes') {
+                  return (
+                    <td key={column.key} className="records__cell--bytes">
+                      <span className="records__bytes mono">{formatTokens(value, row)}</span>
                     </td>
                   );
                 }

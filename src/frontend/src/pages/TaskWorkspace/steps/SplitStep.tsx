@@ -6,7 +6,22 @@ import { Button, NumberField, StatusNote, Summary } from '../../../components/ui
 import type { TaskDescriptor } from '../../../tasks/catalog';
 import { useAction } from '../use-action';
 
-const DEFAULT_POLICY: SplitRequest = { seed: 123, train_fraction: 0.7, holdout_test_fraction: 0.5 };
+const DEFAULT_POLICY: SplitRequest = { seed: 123, train_fraction: 0.7, test_fraction: 0.15, eval_fraction: 0.15 };
+
+/** The same bound and tolerance SplitRequest applies in schemas.py. */
+const TOLERANCE = 1e-9;
+const outOfRange = (value: number) => !Number.isFinite(value) || value <= 0 || value >= 1;
+
+const percent = (value: number) =>
+  Number.isFinite(value) ? `${Math.round(value * 1000) / 10}%` : '—';
+
+/**
+ * A total rejected for being a hair off one still rounds to a flat 100% at the
+ * breakdown's precision, so reporting it that way would contradict the warning
+ * carrying it. This keeps enough digits to show what was actually wrong.
+ */
+const exactPercent = (value: number) =>
+  Number.isFinite(value) ? `${Number((value * 100).toPrecision(6))}%` : '—';
 
 interface SplitStepProps {
   task: TaskDescriptor;
@@ -26,6 +41,15 @@ export function SplitStep({ task, datasetId, cleaned, split, onSplit }: SplitSte
 
   const patch = (change: Partial<SplitRequest>) =>
     setPolicy((current) => ({ ...current, ...change }));
+
+  const fractions = [policy.train_fraction, policy.test_fraction, policy.eval_fraction];
+  const total = fractions.reduce((sum, value) => sum + value, 0);
+  // Kept apart because a fraction can be out of range while the three still
+  // total one, and then only the range explains the rejection.
+  const anyOutOfRange = fractions.some(outOfRange);
+  const totalIsOff = Math.abs(total - 1) > TOLERANCE;
+  const invalidPolicy = anyOutOfRange || totalIsOff;
+  const breakdown = `${percent(policy.train_fraction)} train · ${percent(policy.test_fraction)} test · ${percent(policy.eval_fraction)} eval`;
 
   return (
     <StepCard
@@ -51,27 +75,55 @@ export function SplitStep({ task, datasetId, cleaned, split, onSplit }: SplitSte
             <NumberField
               id="split-train"
               label="Train fraction"
-              hint="Share used for training"
+              hint="Share of the full dataset used for training"
               value={policy.train_fraction}
               min={0.01}
               max={0.99}
               step={0.05}
+              invalid={outOfRange(policy.train_fraction)}
               onChange={(train_fraction) => patch({ train_fraction })}
             />
             <NumberField
-              id="split-holdout"
-              label="Holdout test fraction"
-              hint="Share of the holdout kept for test"
-              value={policy.holdout_test_fraction}
+              id="split-test"
+              label="Test fraction"
+              hint="Share of the full dataset used for test"
+              value={policy.test_fraction}
               min={0.01}
               max={0.99}
               step={0.05}
-              onChange={(holdout_test_fraction) => patch({ holdout_test_fraction })}
+              invalid={outOfRange(policy.test_fraction)}
+              onChange={(test_fraction) => patch({ test_fraction })}
+            />
+            <NumberField
+              id="split-eval"
+              label="Eval fraction"
+              hint="Share of the full dataset used for evaluation"
+              value={policy.eval_fraction}
+              min={0.01}
+              max={0.99}
+              step={0.05}
+              invalid={outOfRange(policy.eval_fraction)}
+              onChange={(eval_fraction) => patch({ eval_fraction })}
             />
           </div>
 
+          {invalidPolicy ? (
+            <StatusNote tone="warn">
+              {anyOutOfRange
+                ? 'Each fraction must be above 0 and below 1.'
+                : `Train, test and eval must total 100%; these total ${exactPercent(total)}.`}
+            </StatusNote>
+          ) : (
+            <p className="work__hint">{`Gives ${breakdown}.`}</p>
+          )}
+
           <div className="work__row">
-            <Button variant="primary" pending={action.pending} onClick={() => void action.run(datasetId)}>
+            <Button
+              variant="primary"
+              pending={action.pending}
+              disabled={invalidPolicy}
+              onClick={() => void action.run(datasetId)}
+            >
               Create split
             </Button>
             <Button disabled={action.pending} onClick={() => setPolicy(DEFAULT_POLICY)}>

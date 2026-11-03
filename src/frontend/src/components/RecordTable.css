@@ -76,3 +76,21 @@
   font-size: var(--text-sm);
   color: var(--text-muted);
 }
+
+.records__cell--hash {
+  color: var(--text-muted);
+}
+
+/* Byte windows are long; the wrapper constrains them the way text cells are. */
+.records__table td.records__cell--bytes {
+  white-space: normal;
+}
+
+.records__bytes {
+  display: block;
+  max-width: 34rem;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

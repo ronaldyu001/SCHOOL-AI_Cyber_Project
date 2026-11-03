@@ -70,9 +70,15 @@ The records panel reads `GET .../prepared/{prepared_id}/{partition}` and
 
 Notes:
 
-- Network intrusion preprocessing returns 409 until a fitted preprocessor is
-  passed to `create_app()`. The UI shows that as a warning, not a failure.
-- Malware detection is listed but disabled: the backend exposes no router for it.
+- Datasets are static: every task loads only its bundled source file. The
+  malware router also exposes `POST /upload`, but the console deliberately does
+  not offer it.
+- Network intrusion and malware detection preprocessing return 409 until a
+  preprocessor is passed to `create_app()`. The UI shows that as a warning, not
+  a failure.
+- Malware preprocessed records are padded byte sequences, so the records panel
+  adds a byte window (`token_offset` / `token_limit`) on top of the row pager
+  and renders the tokens as hex, with padding shown as `··`.
 - Pipeline state lives in component state, so reloading the page starts over.
   The backend session stays in memory until it is unloaded or the API restarts.
 

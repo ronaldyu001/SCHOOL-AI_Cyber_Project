@@ -58,10 +58,12 @@ interface NumberFieldProps {
   max: number;
   step: number;
   disabled?: boolean;
+  /** Marks the value as out of contract, so the border and assistive tech agree. */
+  invalid?: boolean;
   onChange: (value: number) => void;
 }
 
-export function NumberField({ id, label, hint, value, min, max, step, disabled, onChange }: NumberFieldProps) {
+export function NumberField({ id, label, hint, value, min, max, step, disabled, invalid, onChange }: NumberFieldProps) {
   const hintId = hint === undefined ? undefined : `${id}-hint`;
   return (
     <div className="field">
@@ -78,6 +80,7 @@ export function NumberField({ id, label, hint, value, min, max, step, disabled, 
         max={max}
         step={step}
         disabled={disabled}
+        aria-invalid={invalid === true || undefined}
         aria-describedby={hintId}
         onChange={(event) => {
           const next = Number(event.target.value);

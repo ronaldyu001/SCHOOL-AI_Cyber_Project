@@ -81,3 +81,26 @@
   font-size: var(--text-sm);
   color: var(--text-muted);
 }
+
+.explorer__sizes {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.explorer__window {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.explorer__encoding {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}

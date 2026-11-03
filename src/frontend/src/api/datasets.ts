@@ -14,6 +14,12 @@ import type {
 /** Router prefix segment, e.g. `network_intrusion`. */
 export type TaskSlug = 'network_intrusion' | 'phishing_detection' | 'malware_detection';
 
+/** `token_offset` / `token_limit`: a window into one preprocessed byte sequence. */
+export interface TokenWindow {
+  offset: number;
+  limit: number;
+}
+
 const root = (slug: TaskSlug) => `/datasets/${slug}`;
 
 export const loadDataset = (slug: TaskSlug) =>
@@ -58,11 +64,16 @@ export const fetchPreprocessedRecords = (
   offset: number,
   limit: number,
   signal?: AbortSignal,
-) =>
-  request<RecordsResponse>(
-    `${root(slug)}/${datasetId}/preprocessed/${preprocessedId}?offset=${offset}&limit=${limit}`,
+  /** Slice of each byte-token sequence to return, for tasks that produce one. */
+  tokens?: TokenWindow,
+) => {
+  const window =
+    tokens === undefined ? '' : `&token_offset=${tokens.offset}&token_limit=${tokens.limit}`;
+  return request<RecordsResponse>(
+    `${root(slug)}/${datasetId}/preprocessed/${preprocessedId}?offset=${offset}&limit=${limit}${window}`,
     { signal },
   );
+};
 
 export const unloadDataset = (slug: TaskSlug, datasetId: string) =>
   request<void>(`${root(slug)}/${datasetId}`, { method: 'DELETE' });

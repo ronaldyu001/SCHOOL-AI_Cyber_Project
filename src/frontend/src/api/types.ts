@@ -7,7 +7,8 @@ export const PARTITIONS: readonly Partition[] = ['train', 'test', 'eval'];
 export interface SplitRequest {
   seed: number;
   train_fraction: number;
-  holdout_test_fraction: number;
+  test_fraction: number;
+  eval_fraction: number;
 }
 
 export interface SourceResponse {

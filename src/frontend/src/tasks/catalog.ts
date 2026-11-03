@@ -13,6 +13,8 @@ export interface TaskDescriptor {
   available: boolean;
   /** Fixed feature order used to name the columns of a network record. */
   features?: { numeric: readonly string[]; categorical: readonly string[] };
+  /** Preprocessed records are padded byte sequences the explorer pages through. */
+  byteTokens?: boolean;
   /** Shown on the preprocess step when the backend cannot run it yet. */
   preprocessNote?: string;
   unavailableNote?: string;
@@ -57,11 +59,13 @@ export const TASKS: readonly TaskDescriptor[] = [
     slug: 'malware_detection',
     name: 'Malware Detection',
     summary:
-      'Classify binaries or executables as benign or malicious. Domain entities exist, but no dataset router is exposed yet.',
-    datasetFile: '—',
+      'Classify executables as benign or malicious from their raw bytes, read out of a ZIP archive whose filenames are the SHA-256 of each sample.',
+    datasetFile: 'MalwareDetectionDataset.zip',
     labels: ['Benign', 'Malicious'],
-    available: false,
-    unavailableNote: 'The backend has no malware_detection dataset router yet, so there is nothing to load.',
+    available: true,
+    byteTokens: true,
+    preprocessNote:
+      'Preprocessing needs the byte preprocessor matching the trained checkpoint. The backend returns 409 until that is wired into create_app().',
   },
 ];
 
