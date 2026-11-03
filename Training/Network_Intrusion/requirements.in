@@ -31,3 +31,4 @@ pytest>=8.3.5
 ruff>=0.11.4
 typos>=1.31.1
 xdoctest>=1.2.0
+captum
