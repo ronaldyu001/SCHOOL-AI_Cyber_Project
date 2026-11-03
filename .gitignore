@@ -37,3 +37,4 @@ dist-ssr
 __pycache__/
 *.py[cod]
 tests
+.claude
