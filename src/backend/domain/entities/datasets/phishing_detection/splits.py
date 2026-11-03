@@ -1,15 +1,20 @@
 """Split membership, separate from materialized data partitions."""
 from dataclasses import dataclass
+from math import isclose, isfinite
 
 @dataclass(frozen=True)
 class PhishingDetectionSplitPolicy:
     seed: int = 123
     train_fraction: float = 0.7
-    holdout_test_fraction: float = 0.5
+    test_fraction: float = 0.15
+    eval_fraction: float = 0.15
 
     def __post_init__(self) -> None:
-        if not 0 < self.train_fraction < 1 or not 0 < self.holdout_test_fraction < 1:
+        fractions = (self.train_fraction, self.test_fraction, self.eval_fraction)
+        if any(not isfinite(value) or not 0 < value < 1 for value in fractions):
             raise ValueError("Split fractions must be between zero and one")
+        if not isclose(sum(fractions), 1.0, rel_tol=0.0, abs_tol=1e-9):
+            raise ValueError("Train, test, and eval fractions must sum to one")
 
 @dataclass(frozen=True)
 class PhishingDetectionDatasetSplits:

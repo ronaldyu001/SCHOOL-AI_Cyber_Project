@@ -13,13 +13,14 @@ python -m pip install -r requirements.txt
 uvicorn main:app --reload
 ```
 
-Open `http://localhost:8000/docs` to exercise the APIs. The application starts without reading either dataset. Network intrusion and phishing detection are implemented; malware remains a template.
+Open `http://localhost:8000/docs` to exercise the APIs. The application starts without reading any dataset. Network intrusion, phishing detection, and malware detection are all implemented.
 
 Bundled source files belong here:
 
 ```text
 .data/network_intrusion/train_test_network.csv
 .data/phishing_detection/phishing_email.csv
+.data/malware_detection/MalwareDetectionDataset.zip
 ```
 
 The available notebook CSVs have been copied to these locations locally. `.data` is Git-ignored: a fresh checkout must supply them before loading datasets or building an image. The Dockerfile includes `.data` without loading it at startup:
@@ -31,22 +32,23 @@ docker run --rm -p 8000:8000 ai-cyber-backend
 
 ## Dataset APIs
 
-Use either `/datasets/network_intrusion` or `/datasets/phishing_detection` as the prefix.
+Use `/datasets/network_intrusion`, `/datasets/phishing_detection`, or `/datasets/malware_detection` as the prefix.
 
 | Method | Suffix | Input / behavior |
 | --- | --- | --- |
-| POST | `/load` | No body. Loads only that task's bundled CSV; returns `dataset_id`, schema columns, sample count, and SHA-256 source version. |
+| POST | `/load` | No body. Loads only that task's bundled source file; returns `dataset_id`, schema columns, sample count, and SHA-256 source version. |
+| POST | `/upload` | Malware detection only. Raw `application/zip` body, up to 4 GiB, streamed to a temporary directory. Same response as `/load`. |
 | POST | `/{dataset_id}/clean` | Selects/normalizes records and deduplicates. Idempotent for the loaded dataset. |
-| POST | `/{dataset_id}/splits` | `{}` uses notebook defaults: stratified 70/15/15, seed 123. Optional `seed`, `train_fraction`, `holdout_test_fraction`; returns `split_id` and partition counts. |
+| POST | `/{dataset_id}/splits` | `{}` uses notebook defaults: stratified 70/15/15, seed 123. Optional `seed`, `train_fraction`, `test_fraction`, `eval_fraction`; returns `split_id` and partition counts. |
 | POST | `/{dataset_id}/prepare` | `{"split_id":"..."}` materializes actual train/test/eval records. Returns `prepared_id`. |
 | GET | `/{dataset_id}/prepared/{prepared_id}/{partition}` | `partition` is train/test/eval. Returns records with original source row IDs. |
 | POST | `/{dataset_id}/preprocess` | `{"prepared_id":"..."}` transforms eval only. Returns `preprocessed_id`. |
 | GET | `/{dataset_id}/preprocessed/{preprocessed_id}` | Returns transformed eval rows and labels. |
 | DELETE | `/{dataset_id}` | Releases that dataset and all associated state. |
 
-Both GET routes support `offset` (default 0) and `limit` (default 100, maximum 1000). IDs are scoped to their dataset and task. Missing IDs/files return 404, missing prerequisite stages return 409, and invalid data/requests return 422. Failed stages do not save partial output.
+Both GET routes support `offset` (default 0) and `limit` (default 100, maximum 1000). The malware preprocessed route also takes `token_offset` (default 0) and `token_limit` (default 256, maximum 4096) to window each padded byte sequence. IDs are scoped to their dataset and task. Missing IDs/files return 404, missing prerequisite stages return 409, and invalid data/requests return 422. Failed stages do not save partial output.
 
-State is held in memory per application process, like the MSCS reference project. A restart discards it; use one worker for this implementation. Datasets and their prepared/preprocessed entities are available under `app.state.network_intrusion_datasets` and `app.state.phishing_detection_datasets` for subsequent integration.
+State is held in memory per application process, like the MSCS reference project. A restart discards it; use one worker for this implementation. Datasets and their prepared/preprocessed entities are available under `app.state.network_intrusion_datasets`, `app.state.phishing_detection_datasets`, and `app.state.malware_detection_datasets` for subsequent integration. A malware session also owns an extracted-archive temporary directory, released by `DELETE` and at application shutdown.
 
 ## Task behavior
 
@@ -63,6 +65,19 @@ app = create_app(network_preprocessor=NetworkIntrusionCheckpointPreprocessor(che
 ```
 
 Until configured, the network preprocessing endpoint returns 409. Checkpoint import/deserialization and model inference belong to the model integration scope. Top-level dependencies are declared in `requirements.in`; `requirements.txt` is used for installation. Both currently list unpinned dependencies, with no separate dev requirements files.
+
+Malware detection reads a ZIP holding `files/{benign,malware}/` executables named by their SHA-256 and matching `labels/{benign,malware}/` manifests. The ZIP adapter rejects links and unsafe members, enforces extraction limits, and parses only the hash column; the binary adapter then verifies each file's bytes against its name. Samples are read as bytes and never executed. Prepared records report the hash, archive path, label, and size rather than the content itself.
+
+Malware preprocessing needs the byte encoding matching the trained checkpoint, so it is configured the same way as the network preprocessor:
+
+```python
+from main import create_app
+from infrastructure.adapters.preprocessing.malware_detection import MalwareDetectionBytePreprocessor
+
+app = create_app(malware_preprocessor=MalwareDetectionBytePreprocessor(max_length=1_048_576))
+```
+
+Until configured, the malware preprocessing endpoint returns 409.
 
 Phishing uses one text feature (`text_combined`) and binary `label` (0 legitimate, 1 phishing/spam). Cleaning drops missing/blank inputs, normalizes whitespace, rejects conflicting labels for identical normalized text, and keeps the first duplicate. The text adapter extracts normalized eval strings and labels. The model pipeline owns BART tokenization and truncation; no vocabulary or scaler is fitted here.
 

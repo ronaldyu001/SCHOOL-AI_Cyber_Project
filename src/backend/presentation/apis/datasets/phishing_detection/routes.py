@@ -72,7 +72,8 @@ def create_router(data_root: Path, sessions: dict[str, DatasetSession] | None = 
         with session.lock, dataset_errors():
             if session.cleaned is None:
                 raise HTTPException(409, "Clean the dataset before creating a split")
-            policy = PhishingDetectionSplitPolicy(body.seed, body.train_fraction, body.holdout_test_fraction)
+            policy = PhishingDetectionSplitPolicy(seed=body.seed, train_fraction=body.train_fraction,
+                                                    test_fraction=body.test_fraction, eval_fraction=body.eval_fraction)
             split = CreatePhishingDetectionDatasetSplit(PhishingDetectionSklearnSplitter()).execute(session.cleaned, policy)
             split_id = str(uuid4())
             session.splits[split_id] = split

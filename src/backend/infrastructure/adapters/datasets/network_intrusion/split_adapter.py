@@ -13,6 +13,6 @@ class NetworkIntrusionSklearnSplitter(NetworkIntrusionSplitterPort):
             ids, labels, train_size=policy.train_fraction, random_state=policy.seed, stratify=labels,
         )
         test, evaluation = train_test_split(
-            holdout, train_size=policy.holdout_test_fraction, random_state=policy.seed, stratify=holdout_labels,
+            holdout, train_size=policy.test_fraction / (policy.test_fraction + policy.eval_fraction), random_state=policy.seed, stratify=holdout_labels,
         )
         return NetworkIntrusionDatasetSplits(tuple(train), tuple(test), tuple(evaluation), policy)

@@ -1,6 +1,7 @@
 """HTTP contracts shared by the task-specific dataset APIs."""
 from typing import Any
-from pydantic import BaseModel, ConfigDict, Field
+from math import isclose
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 class RequestModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -8,7 +9,15 @@ class RequestModel(BaseModel):
 class SplitRequest(RequestModel):
     seed: int = Field(default=123, ge=0, le=4294967295, strict=True)
     train_fraction: float = Field(default=0.7, gt=0, lt=1, allow_inf_nan=False)
-    holdout_test_fraction: float = Field(default=0.5, gt=0, lt=1, allow_inf_nan=False)
+    test_fraction: float = Field(default=0.15, gt=0, lt=1, allow_inf_nan=False)
+    eval_fraction: float = Field(default=0.15, gt=0, lt=1, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def validate_total(self) -> "SplitRequest":
+        if not isclose(self.train_fraction + self.test_fraction + self.eval_fraction, 1.0,
+                       rel_tol=0.0, abs_tol=1e-9):
+            raise ValueError("Train, test, and eval fractions must sum to one")
+        return self
 
 class PrepareRequest(RequestModel):
     split_id: str = Field(min_length=1)
