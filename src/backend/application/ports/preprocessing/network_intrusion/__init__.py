@@ -1,1 +1,2 @@
 from .preprocessor import NetworkIntrusionPreprocessorPort
+from .artifacts import NetworkIntrusionArtifactPort

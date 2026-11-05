@@ -1,1 +1,2 @@
 from .preprocessor import PhishingDetectionPreprocessorPort
+from .artifacts import PhishingDetectionArtifactPort
