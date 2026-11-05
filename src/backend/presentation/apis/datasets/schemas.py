@@ -1,5 +1,5 @@
 """HTTP contracts shared by the task-specific dataset APIs."""
-from typing import Any
+from typing import Any, Literal
 from math import isclose
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -24,6 +24,12 @@ class PrepareRequest(RequestModel):
 
 class PreprocessRequest(RequestModel):
     prepared_id: str = Field(min_length=1)
+    artifact_id: str | None = Field(default=None, pattern="^[0-9a-f]{64}$")
+    partition: Literal["train", "test", "eval"] = "eval"
+
+class ArtifactRequest(RequestModel):
+    prepared_id: str = Field(min_length=1)
+    settings: dict[str, Any] = Field(default_factory=dict)
 
 class SourceResponse(BaseModel):
     dataset_id: str
@@ -60,6 +66,7 @@ class PreprocessResponse(BaseModel):
     prepared_id: str
     preprocessed_id: str
     partition: str = "eval"
+    artifact_id: str | None = None
     sample_count: int
 
 class RecordsResponse(BaseModel):

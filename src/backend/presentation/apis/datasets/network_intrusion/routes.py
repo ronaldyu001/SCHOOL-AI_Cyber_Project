@@ -1,5 +1,11 @@
 """Dataset-only HTTP endpoints for network intrusion."""
-from dataclasses import asdict, dataclass, field
+from presentation.apis.datasets.resets import add_reset_routes
+from presentation.apis.datasets.downloads import add_download_routes
+from application.use_cases.datasets.network_intrusion.export_dataset import ExportNetworkIntrusionDataset
+from infrastructure.adapters.datasets.network_intrusion.export_adapter import NetworkIntrusionZIPExporter
+from presentation.apis.datasets.artifacts import add_artifact_routes, get_artifact, artifact_errors, check_input_budget
+from infrastructure.adapters.preprocessing.artifact_factory import preprocessor_for
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from threading import RLock
 from typing import Literal
@@ -31,11 +37,12 @@ class DatasetSession:
     cleaned: NetworkIntrusionCleanedDataset | None = None
     splits: dict[str, NetworkIntrusionDatasetSplits] = field(default_factory=dict)
     prepared: dict[str, NetworkIntrusionPreparedDataset] = field(default_factory=dict)
+    artifact_bindings: dict[str, set[str]] = field(default_factory=dict)
     preprocessed: dict[str, NetworkIntrusionPreprocessedDataset] = field(default_factory=dict)
     lock: RLock = field(default_factory=RLock)
 
 
-def create_router(data_root: Path, preprocessor: NetworkIntrusionPreprocessorPort | None = None, sessions: dict[str, DatasetSession] | None = None) -> APIRouter:
+def create_router(data_root: Path, preprocessor: NetworkIntrusionPreprocessorPort | None = None, sessions: dict[str, DatasetSession] | None = None, artifact_adapter=None) -> APIRouter:
     router = APIRouter(prefix="/datasets/network_intrusion", tags=["network_intrusion datasets"])
     # Per-application memory, like the reference repo. No dataset reads at startup.
     sessions = {} if sessions is None else sessions
@@ -110,17 +117,24 @@ def create_router(data_root: Path, preprocessor: NetworkIntrusionPreprocessorPor
     @router.post("/{dataset_id}/preprocess", response_model=PreprocessResponse, status_code=201)
     def preprocess_dataset(dataset_id: str, body: PreprocessRequest) -> PreprocessResponse:
         session = get_session(dataset_id)
-        with session.lock, dataset_errors():
+        with session.lock, artifact_errors():
             prepared = session.prepared.get(body.prepared_id)
             if prepared is None:
                 raise HTTPException(404, "Prepared dataset not found for this dataset")
-            if preprocessor is None:
-                raise HTTPException(409, "Configure the imported model's fitted network preprocessor before preprocessing")
-            transformed = PreprocessNetworkIntrusionDataset(preprocessor).execute(prepared)
+            if body.artifact_id is not None:
+                artifact = get_artifact(session, artifact_adapter, body.prepared_id, body.artifact_id)
+                check_input_budget(artifact, getattr(prepared, body.partition))
+                selected_preprocessor = preprocessor_for(artifact_adapter, artifact)
+            else:
+                selected_preprocessor = preprocessor
+                if artifact_adapter is not None or selected_preprocessor is None:
+                    raise HTTPException(409, "Create and select preprocessing artifacts first")
+            transformed = PreprocessNetworkIntrusionDataset(selected_preprocessor).execute(prepared, body.partition)
+            transformed = replace(transformed, artifact_id=body.artifact_id, partition=body.partition)
             preprocessed_id = str(uuid4())
             session.preprocessed[preprocessed_id] = transformed
             return PreprocessResponse(dataset_id=dataset_id, prepared_id=body.prepared_id,
-                                      preprocessed_id=preprocessed_id, sample_count=len(transformed.row_ids))
+                                      preprocessed_id=preprocessed_id, artifact_id=body.artifact_id, partition=body.partition, sample_count=len(transformed.row_ids))
 
     @router.get("/{dataset_id}/preprocessed/{preprocessed_id}", response_model=RecordsResponse)
     def preprocessed_records(dataset_id: str, preprocessed_id: str,
@@ -142,4 +156,7 @@ def create_router(data_root: Path, preprocessor: NetworkIntrusionPreprocessorPor
             sessions.pop(dataset_id, None)
         return Response(status_code=204)
 
+    add_reset_routes(router, get_session)
+    add_download_routes(router, get_session, ExportNetworkIntrusionDataset(NetworkIntrusionZIPExporter()))
+    add_artifact_routes(router, get_session, artifact_adapter)
     return router
