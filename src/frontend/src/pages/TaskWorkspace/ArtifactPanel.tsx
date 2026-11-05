@@ -79,7 +79,7 @@ const FILE_PURPOSE: Record<string, string> = {
 
 /** How a folder of members is meant to be loaded once the ZIP is unpacked. */
 const FOLDER_USAGE: Record<string, string> = {
-  tokenizer: 'Unzip, then point AutoTokenizer.from_pretrained() at this folder.',
+  tokenizer: 'Unzip, then point transformers.AutoTokenizer.from_pretrained() at this folder.',
 };
 
 const basename = (path: string) => path.slice(path.lastIndexOf('/') + 1);
