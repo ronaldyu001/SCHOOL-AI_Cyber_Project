@@ -4,6 +4,8 @@ services:
       context: ../backend
       dockerfile: Dockerfile
       target: runtime
+    volumes:
+      - preprocessing-artifacts:/app/.artifacts
     # Reached only through the frontend's /api proxy, so no published port.
     expose:
       - "8000"
@@ -24,3 +26,6 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+
+volumes:
+  preprocessing-artifacts:
