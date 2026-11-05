@@ -1,10 +1,7 @@
-"""Evaluation text inputs ready for the model's zero-shot pipeline.
-
-The notebook performs whitespace normalization during cleaning. Tokenization
-belongs to the imported model's pipeline and is not fitted on this dataset.
-"""
+"""Cleaned text and optional candidate-paired tokenizer inputs."""
 from dataclasses import dataclass
 from ..common import DatasetSource
+from domain.entities.preprocessing.artifacts import validate_preprocessing_reference
 
 @dataclass(frozen=True)
 class PhishingDetectionPreprocessedDataset:
@@ -13,7 +10,15 @@ class PhishingDetectionPreprocessedDataset:
     texts: tuple[str, ...]
     labels: tuple[int, ...]
 
+    input_ids: tuple[tuple[tuple[int, ...], ...], ...] = ()
+    attention_mask: tuple[tuple[tuple[int, ...], ...], ...] = ()
+    candidate_labels: tuple[str, ...] = ()
+
+    artifact_id: str | None = None
+    partition: str = "eval"
+
     def __post_init__(self) -> None:
+        validate_preprocessing_reference(self.artifact_id, self.partition)
         if not len(self.row_ids) == len(self.texts) == len(self.labels):
             raise ValueError("Texts, labels, and row IDs must align")
         if len(set(self.row_ids)) != len(self.row_ids):
@@ -22,3 +27,13 @@ class PhishingDetectionPreprocessedDataset:
             raise ValueError("Evaluation texts must be nonempty")
         if any(label not in (0, 1) for label in self.labels):
             raise ValueError("Expected binary labels")
+
+        if self.candidate_labels or self.input_ids or self.attention_mask:
+            if len(self.candidate_labels) != 2 or len(self.input_ids) != len(self.row_ids) or len(self.attention_mask) != len(self.row_ids):
+                raise ValueError("Token pairs and candidates must align with samples")
+            for pairs, masks in zip(self.input_ids, self.attention_mask):
+                if len(pairs) != 2 or len(masks) != 2:
+                    raise ValueError("Expected one premise/hypothesis pair per candidate")
+                for tokens, mask in zip(pairs, masks):
+                    if not tokens or len(tokens) != len(mask) or any(type(t) is not int or t < 0 for t in tokens) or any(m not in (0, 1) for m in mask):
+                        raise ValueError("Invalid token IDs or attention masks")

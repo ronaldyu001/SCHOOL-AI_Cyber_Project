@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 from math import isfinite
 from ..common import DatasetSource
+from domain.entities.preprocessing.artifacts import validate_preprocessing_reference
 from .schema import NUMERIC_FEATURES, CATEGORICAL_FEATURES, validate_feature_order
 
 @dataclass(frozen=True)
@@ -15,7 +16,11 @@ class NetworkIntrusionPreprocessedDataset:
     numeric_features: tuple[str, ...] = NUMERIC_FEATURES
     categorical_features: tuple[str, ...] = CATEGORICAL_FEATURES
 
+    artifact_id: str | None = None
+    partition: str = "eval"
+
     def __post_init__(self) -> None:
+        validate_preprocessing_reference(self.artifact_id, self.partition)
         validate_feature_order(self.numeric_features, self.categorical_features)
         if not len(self.row_ids) == len(self.numeric) == len(self.categorical) == len(self.labels):
             raise ValueError("Transformed features, labels, and IDs must align")
