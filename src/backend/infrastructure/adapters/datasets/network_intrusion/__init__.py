@@ -1,2 +1,3 @@
 from .csv_adapter import NetworkIntrusionCSVAdapter
 from .split_adapter import NetworkIntrusionSklearnSplitter
+from .export_adapter import NetworkIntrusionZIPExporter
