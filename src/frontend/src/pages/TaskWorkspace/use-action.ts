@@ -1,5 +1,6 @@
 /** Tracks pending/error state for one API call. */
-import { useCallback, useState } from 'react';
+import { useCallback, useContext, useState } from 'react';
+import { ActionScopeContext } from './action-scope';
 import { ApiError } from '../../api/client';
 
 export interface ActionState<Args extends unknown[]> {
@@ -14,6 +15,7 @@ export interface ActionState<Args extends unknown[]> {
 export function useAction<Args extends unknown[]>(
   action: (...args: Args) => Promise<void>,
 ): ActionState<Args> {
+  const scope = useContext(ActionScopeContext);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<number | null>(null);
@@ -25,6 +27,7 @@ export function useAction<Args extends unknown[]>(
 
   const run = useCallback(
     async (...args: Args) => {
+      if (scope !== null && !scope.acquire()) return;
       setPending(true);
       setError(null);
       setStatus(null);
@@ -41,9 +44,10 @@ export function useAction<Args extends unknown[]>(
         }
       } finally {
         setPending(false);
+        scope?.release();
       }
     },
-    [action],
+    [action, scope],
   );
 
   return { run, pending, error, status, reset };

@@ -1,4 +1,4 @@
-/** Shared primitives: button, badge, status note, number field, summary list. */
+/** Shared primitives: button, download link, badge, status note, number field, summary list. */
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import './ui.css';
 
@@ -28,6 +28,35 @@ export function Button({
       {pending ? <span className="btn__spinner" aria-hidden="true" /> : null}
       {children}
     </button>
+  );
+}
+
+interface DownloadLinkProps {
+  href: string;
+  variant?: ButtonVariant;
+  /**
+   * The surrounding fieldset cannot reach an anchor, so a busy workspace has to
+   * disable this itself. Dropping `href` is what actually stops the click.
+   */
+  disabled?: boolean;
+  children: ReactNode;
+}
+
+/**
+ * A download styled as a button. Deliberately an anchor rather than a fetch:
+ * the browser streams the response to disk, and a prepared malware bundle
+ * carries the executables themselves, far past what a blob could hold.
+ */
+export function DownloadLink({ href, variant = 'secondary', disabled = false, children }: DownloadLinkProps) {
+  return (
+    <a
+      className={`btn btn--${variant}`}
+      href={disabled ? undefined : href}
+      download
+      aria-disabled={disabled || undefined}
+    >
+      {children}
+    </a>
   );
 }
 

@@ -1,6 +1,6 @@
 /** One numbered step of the dataset pipeline. Renders as a list item. */
 import type { ReactNode } from 'react';
-import { Badge } from './ui';
+import { Badge, Button } from './ui';
 import './StepCard.css';
 
 export type StepState = 'locked' | 'ready' | 'done';
@@ -19,9 +19,10 @@ interface StepCardProps {
   /** Why the step is locked. Shown instead of the body when locked. */
   lockedHint?: string;
   children?: ReactNode;
+  onReset?: () => void;
 }
 
-export function StepCard({ step, title, description, state, lockedHint, children }: StepCardProps) {
+export function StepCard({ step, title, description, state, lockedHint, children, onReset }: StepCardProps) {
   return (
     <li className={`step step--${state}`}>
       <div className="step__head">
@@ -42,6 +43,12 @@ export function StepCard({ step, title, description, state, lockedHint, children
           <p className="step__locked">{lockedHint ?? 'Finish the previous step first.'}</p>
         ) : (
           children
+        )}
+        {onReset === undefined ? null : (
+          <div className="step__reset">
+            <Button onClick={onReset}>Reset {title.toLowerCase()}</Button>
+            <p className="work__hint">Clears this stage and later results. Earlier data stays available.</p>
+          </div>
         )}
       </div>
     </li>

@@ -49,7 +49,8 @@ export interface PreprocessResponse {
   dataset_id: string;
   prepared_id: string;
   preprocessed_id: string;
-  partition: string;
+  partition: Partition;
+  artifact_id: string | null;
   sample_count: number;
 }
 
@@ -58,4 +59,15 @@ export interface RecordsResponse {
   offset: number;
   limit: number;
   records: Record<string, unknown>[];
+}
+
+export interface PreprocessingArtifact {
+  artifact_id: string;
+  manifest: {
+    schema_version: number;
+    task: string;
+    settings: Record<string, unknown>;
+    provenance: { dataset_version: string; training_fingerprint: string; training_sample_count: number };
+    files: Record<string, string>;
+  };
 }

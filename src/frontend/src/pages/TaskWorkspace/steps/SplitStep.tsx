@@ -4,6 +4,7 @@ import type { SplitRequest, SplitResponse } from '../../../api/types';
 import { StepCard } from '../../../components/StepCard';
 import { Button, NumberField, StatusNote, Summary } from '../../../components/ui';
 import type { TaskDescriptor } from '../../../tasks/catalog';
+import { StageDownload } from '../StageDownload';
 import { useAction } from '../use-action';
 
 const DEFAULT_POLICY: SplitRequest = { seed: 123, train_fraction: 0.7, test_fraction: 0.15, eval_fraction: 0.15 };
@@ -24,6 +25,7 @@ const exactPercent = (value: number) =>
   Number.isFinite(value) ? `${Number((value * 100).toPrecision(6))}%` : '—';
 
 interface SplitStepProps {
+  onReset?: () => void;
   task: TaskDescriptor;
   datasetId: string | null;
   /** Null until the dataset has been cleaned; the backend returns 409 before then. */
@@ -32,7 +34,7 @@ interface SplitStepProps {
   onSplit: (split: SplitResponse) => void;
 }
 
-export function SplitStep({ task, datasetId, cleaned, split, onSplit }: SplitStepProps) {
+export function SplitStep({ onReset, task, datasetId, cleaned, split, onSplit }: SplitStepProps) {
   const [policy, setPolicy] = useState<SplitRequest>(DEFAULT_POLICY);
 
   const action = useAction(async (id: string) => {
@@ -52,7 +54,7 @@ export function SplitStep({ task, datasetId, cleaned, split, onSplit }: SplitSte
   const breakdown = `${percent(policy.train_fraction)} train · ${percent(policy.test_fraction)} test · ${percent(policy.eval_fraction)} eval`;
 
   return (
-    <StepCard
+    <StepCard onReset={onReset}
       step={3}
       title="Split"
       description="Partitions the cleaned rows into train, test and eval."
@@ -127,21 +129,31 @@ export function SplitStep({ task, datasetId, cleaned, split, onSplit }: SplitSte
               Create split
             </Button>
             <Button disabled={action.pending} onClick={() => setPolicy(DEFAULT_POLICY)}>
-              Reset
+              Reset fractions
             </Button>
           </div>
 
           {action.error === null ? null : <StatusNote tone="danger">{action.error}</StatusNote>}
 
           {split === null ? null : (
-            <Summary
-              items={[
-                { label: 'Train', value: split.train_count.toLocaleString() },
-                { label: 'Test', value: split.test_count.toLocaleString() },
-                { label: 'Eval', value: split.eval_count.toLocaleString() },
-                { label: 'Seed', value: split.seed, mono: true },
-              ]}
-            />
+            <>
+              <Summary
+                items={[
+                  { label: 'Train', value: split.train_count.toLocaleString() },
+                  { label: 'Test', value: split.test_count.toLocaleString() },
+                  { label: 'Eval', value: split.eval_count.toLocaleString() },
+                  { label: 'Seed', value: split.seed, mono: true },
+                ]}
+              />
+              <StageDownload
+                slug={task.slug}
+                datasetId={datasetId}
+                stage="splits"
+                resultId={split.split_id}
+                label="Download split assignment (.zip)"
+                contents="The row ids in each partition, with the seed and fractions that produced them. Row data itself comes from a later stage."
+              />
+            </>
           )}
         </>
       )}

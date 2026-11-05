@@ -1,11 +1,15 @@
-import { preprocessDataset } from '../../../api/datasets';
-import type { PreprocessResponse } from '../../../api/types';
+import { useState } from 'react';
+import { artifactDownloadUrl, createPreprocessingArtifact, inspectPreprocessingArtifact, preprocessDataset } from '../../../api/datasets';
+import type { Partition, PreprocessResponse, PreprocessingArtifact } from '../../../api/types';
 import { StepCard } from '../../../components/StepCard';
-import { Button, StatusNote, Summary } from '../../../components/ui';
+import { Button, NumberField, StatusNote, Summary } from '../../../components/ui';
 import type { TaskDescriptor } from '../../../tasks/catalog';
+import { ArtifactFileBadge, ArtifactPanel } from '../ArtifactPanel';
+import { StageDownload } from '../StageDownload';
 import { useAction } from '../use-action';
 
 interface PreprocessStepProps {
+  onReset?: () => void;
   task: TaskDescriptor;
   datasetId: string | null;
   preparedId: string | null;
@@ -13,56 +17,84 @@ interface PreprocessStepProps {
   onPreprocessed: (preprocessed: PreprocessResponse) => void;
 }
 
-export function PreprocessStep({
-  task,
-  datasetId,
-  preparedId,
-  preprocessed,
-  onPreprocessed,
-}: PreprocessStepProps) {
-  const action = useAction(async (id: string, prepared: string) => {
-    onPreprocessed(await preprocessDataset(task.slug, id, prepared));
+export function PreprocessStep({ onReset, task, datasetId, preparedId, preprocessed, onPreprocessed }: PreprocessStepProps) {
+  const [artifacts, setArtifacts] = useState<PreprocessingArtifact[]>([]);
+  const [selectedId, setSelectedId] = useState('');
+  const [partition, setPartition] = useState<Partition>('eval');
+  const [maxLength, setMaxLength] = useState(task.slug === 'malware_detection' ? 1048576 : 1024);
+  const artifact = artifacts.find((item) => item.artifact_id === selectedId);
+  const create = useAction(async (dataset: string, prepared: string) => {
+    const settings = task.slug === 'network_intrusion' ? {} : { max_length: maxLength };
+    const result = await createPreprocessingArtifact(task.slug, dataset, prepared, settings);
+    setArtifacts((current) => current.some((item) => item.artifact_id === result.artifact_id) ? current : [...current, result]);
+    setSelectedId(result.artifact_id);
   });
-
-  // A 409 means the backend has no fitted preprocessor wired up, not a failure
-  // the user can fix from here, so it reads as a warning rather than an error.
-  const unconfigured = action.status === 409;
+  const inspect = useAction(async (dataset: string, id: string) => {
+    const result = await inspectPreprocessingArtifact(task.slug, dataset, id);
+    setArtifacts((current) => current.map((item) => item.artifact_id === id ? result : item));
+  });
+  const action = useAction(async (dataset: string, prepared: string, id: string) => {
+    onPreprocessed(await preprocessDataset(task.slug, dataset, prepared, id, partition));
+  });
+  const busy = create.pending || inspect.pending || action.pending;
 
   return (
-    <StepCard
-      step={5}
-      title="Preprocess"
-      description="Transforms the eval partition into model input."
-      state={preprocessed !== null ? 'done' : preparedId === null ? 'locked' : 'ready'}
-      lockedHint="Prepare the partitions first."
-    >
+    <StepCard onReset={onReset} step={5} title="Preprocess" description="Create reusable preprocessing artifacts, then transform a partition."
+      state={preprocessed !== null ? 'done' : preparedId === null ? 'locked' : 'ready'} lockedHint="Prepare the partitions first.">
       {datasetId === null || preparedId === null ? null : (
         <>
-          <div className="work__row">
-            <Button
-              variant="primary"
-              pending={action.pending}
-              onClick={() => void action.run(datasetId, preparedId)}
-            >
-              Preprocess eval partition
-            </Button>
-          </div>
-
-          {action.error === null ? null : (
-            <StatusNote tone={unconfigured ? 'warn' : 'danger'}>{action.error}</StatusNote>
+          <p className="work__hint">{task.slug === 'network_intrusion'
+            ? 'Fits median imputation, standard scaling, and category mappings on train only.'
+            : task.slug === 'phishing_detection'
+              ? 'Packages the BART tokenizer. The first creation downloads tokenizer files; no model weights.'
+              : 'Packages byte encoding, padding, and truncation settings. No fitting is needed.'}</p>
+          {task.slug === 'network_intrusion' ? null : (
+            <NumberField id="artifact-length" label="Maximum input length" hint={task.slug === 'malware_detection' ? 'Bytes retained per file' : 'Tokens per candidate pair'}
+              value={maxLength} min={task.slug === 'malware_detection' ? 1 : 16} max={task.slug === 'malware_detection' ? 1048576 : 1024}
+              step={1} disabled={busy} onChange={setMaxLength} />
           )}
-
-          {unconfigured && task.preprocessNote !== undefined ? (
-            <p className="work__hint">{task.preprocessNote}</p>
-          ) : null}
-
+          <div className="work__row">
+            <Button pending={create.pending} disabled={busy} onClick={() => void create.run(datasetId, preparedId)}>Create artifacts</Button>
+          </div>
+          {artifacts.length === 0 ? null : (
+            <>
+              <label className="field"><span className="field__label">Artifact version</span>
+                <select className="field__input" value={selectedId} disabled={busy} onChange={(event) => setSelectedId(event.target.value)}>
+                  {artifacts.map((item) => <option key={item.artifact_id} value={item.artifact_id}>{item.artifact_id.slice(0, 16)}</option>)}
+                </select>
+              </label>
+              <div className="work__row">
+                <Button pending={inspect.pending} disabled={busy} onClick={() => void inspect.run(datasetId, selectedId)}>Refresh from server</Button>
+                {artifact === undefined ? null : <ArtifactFileBadge artifact={artifact} />}
+              </div>
+            </>
+          )}
+          {artifact === undefined ? null : (
+            <ArtifactPanel
+              artifact={artifact}
+              downloadUrl={artifactDownloadUrl(task.slug, datasetId, artifact.artifact_id)}
+            />
+          )}
+          <label className="field"><span className="field__label">Partition to transform</span>
+            <select className="field__input" value={partition} disabled={busy} onChange={(event) => setPartition(event.target.value as Partition)}>
+              <option value="train">Train</option><option value="test">Test</option><option value="eval">Eval</option>
+            </select>
+          </label>
+          <div className="work__row"><Button variant="primary" pending={action.pending} disabled={busy || artifact === undefined}
+            onClick={() => void action.run(datasetId, preparedId, selectedId)}>Preprocess {partition} partition</Button></div>
+          {[create.error, inspect.error, action.error].filter((error) => error !== null).map((error, index) => <StatusNote key={index} tone="danger">{error}</StatusNote>)}
           {preprocessed === null ? null : (
-            <Summary
-              items={[
+            <>
+              <Summary items={[
                 { label: 'Partition', value: preprocessed.partition, mono: true },
                 { label: 'Samples', value: preprocessed.sample_count.toLocaleString() },
-              ]}
-            />
+                { label: 'Artifact', value: preprocessed.artifact_id?.slice(0, 16) ?? 'External', mono: true },
+              ]} />
+              {/* The partition is fixed by the result, so this export takes none. */}
+              <StageDownload slug={task.slug} datasetId={datasetId} stage="preprocessed" resultId={preprocessed.preprocessed_id}
+                label={`Download preprocessed ${preprocessed.partition} (.zip)`}
+                contents="The full transformed arrays, untruncated, with the encoding metadata the records panel only previews." />
+            </>
           )}
         </>
       )}

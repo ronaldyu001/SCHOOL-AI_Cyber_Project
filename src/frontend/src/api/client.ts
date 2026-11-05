@@ -5,7 +5,8 @@
  * forward them to the FastAPI service without the backend needing CORS.
  */
 
-const BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? '/api';
+/** Also used to build download URLs, which the browser fetches itself. */
+export const BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
 const UNREACHABLE = 'Cannot reach the dataset API. Is the backend running on port 8000?';
 
@@ -37,16 +38,19 @@ interface RequestOptions {
   method?: 'GET' | 'POST' | 'DELETE';
   body?: unknown;
   signal?: AbortSignal;
+  /** Lets the request outlive the document, for an unload sent on `pagehide`. */
+  keepalive?: boolean;
 }
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, signal } = options;
+  const { method = 'GET', body, signal, keepalive } = options;
 
   let response: Response;
   try {
     response = await fetch(`${BASE_URL}${path}`, {
       method,
       signal,
+      keepalive,
       headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     });

@@ -15,6 +15,11 @@ export interface TaskDescriptor {
   features?: { numeric: readonly string[]; categorical: readonly string[] };
   /** Preprocessed records are padded byte sequences the explorer pages through. */
   byteTokens?: boolean;
+  /**
+   * Record stage exports embed the sample files themselves rather than only
+   * their metadata, so those archives are far larger than the row count hints.
+   */
+  recordFiles?: boolean;
   /** Shown on the preprocess step when the backend cannot run it yet. */
   preprocessNote?: string;
   unavailableNote?: string;
@@ -44,7 +49,7 @@ export const TASKS: readonly TaskDescriptor[] = [
     available: true,
     features: { numeric: NETWORK_NUMERIC, categorical: NETWORK_CATEGORICAL },
     preprocessNote:
-      'Preprocessing needs the fitted preprocessor from the trained TabM checkpoint. The backend returns 409 until that is wired into create_app().',
+      'Create a preprocessing artifact to fit statistics and category mappings on the training partition.',
   },
   {
     slug: 'phishing_detection',
@@ -64,10 +69,21 @@ export const TASKS: readonly TaskDescriptor[] = [
     labels: ['Benign', 'Malicious'],
     available: true,
     byteTokens: true,
+    recordFiles: true,
     preprocessNote:
-      'Preprocessing needs the byte preprocessor matching the trained checkpoint. The backend returns 409 until that is wired into create_app().',
+      'Create a byte-settings artifact, then train and evaluate using that exact version.',
   },
 ];
 
 export const findTask = (slug: string): TaskDescriptor | undefined =>
   TASKS.find((task) => task.slug === slug);
+
+/**
+ * Sentence the record stage exports (loaded, cleaned, prepared) append when a
+ * task's records are files. Worth saying before someone starts a download the
+ * size of the dataset.
+ */
+export const recordNote = (task: TaskDescriptor) =>
+  task.recordFiles === true
+    ? ' Each record carries its sample file, so the archive is as large as the dataset itself.'
+    : '';

@@ -62,25 +62,77 @@ the one before it has run:
 2. `POST /datasets/{task}/{id}/clean`
 3. `POST /datasets/{task}/{id}/splits`
 4. `POST /datasets/{task}/{id}/prepare`
-5. `POST /datasets/{task}/{id}/preprocess`
+5. `POST /datasets/{task}/{id}/artifacts`, then
+   `POST /datasets/{task}/{id}/preprocess` carrying that `artifact_id`
 
 The records panel reads `GET .../prepared/{prepared_id}/{partition}` and
 `GET .../preprocessed/{preprocessed_id}`, and `Unload dataset` sends
-`DELETE /datasets/{task}/{id}`.
+`DELETE /datasets/{task}/{id}`. The preprocess step re-reads a manifest with
+`GET .../artifacts/{artifact_id}` and links the bundle ZIP at
+`GET .../artifacts/{artifact_id}/download`.
+
+### Session lifetime
+
+A session lives in the API process under the `dataset_id` the load step
+returned, and nothing evicts it on a timer. The console therefore deletes one
+everywhere it stops using it:
+
+| Leaving by | Sent from |
+| --- | --- |
+| `Unload dataset` | the button, with any failure shown |
+| `Reload dataset` | the load step, before the replacement is opened |
+| Changing task, or returning to the task list | the workspace unmounting |
+| Closing or refreshing the tab | a `pagehide` listener |
+
+Only the button has anyone left to report a failure to, so the other three go
+through `releaseDataset`, which swallows the outcome: a session that is already
+gone answers 404, which is what those paths wanted anyway. `pagehide` fires on a
+document that is going away, so that request carries `keepalive` to outlive it.
+
+Reload releases first and loads second, so two sessions are never resident at
+once — the malware source is large enough for that peak to be the point. The
+cost is that a reload which then fails leaves nothing loaded.
+
+### Stage exports
+
+Every completed step offers its own ZIP from `GET .../download`, selected by
+`stage` and, past the first two, the id that step returned:
+
+| Step | Query | Archive holds |
+| --- | --- | --- |
+| Load | `stage=loaded` | `data.json` of every source row, `manifest.json` with the columns and digest |
+| Clean | `stage=cleaned` | the surviving rows under the pinned schema version |
+| Split | `stage=splits&result_id={split_id}` | the row ids per partition, with the seed and fractions |
+| Prepare | `stage=prepared&result_id={prepared_id}&partition=…` | one folder per partition, records in split order |
+| Preprocess | `stage=preprocessed&result_id={preprocessed_id}` | the full transformed arrays and encoding metadata |
+
+`prepared` is the only stage holding all three partitions at once, so it is the
+only one the console gives a partition select; `all` is its default. The other
+stages reject a `partition`, and `loaded` and `cleaned` reject a `result_id`.
 
 Notes:
 
 - Datasets are static: every task loads only its bundled source file. The
   malware router also exposes `POST /upload`, but the console deliberately does
   not offer it.
-- Network intrusion and malware detection preprocessing return 409 until a
-  preprocessor is passed to `create_app()`. The UI shows that as a warning, not
-  a failure.
+- Preprocessing runs off a preprocessing artifact, so the step creates one
+  first. Passing a preprocessor to `create_app()` replaces that task's artifact
+  adapter, and the artifact endpoints then return 409.
+- `ArtifactPanel` groups a manifest by the shape of its values rather than by
+  task: scalar settings are the ones you retype in your own training code,
+  while fitted series and maps are summarised and travel in the bundle. Files
+  listed under `files` are what the bundle carries beyond `manifest.json`.
+- Exports are plain anchors, not `fetch` calls, so the browser streams each
+  archive straight to disk. A malware record stage carries the executables
+  themselves, which no in-memory blob would hold. Because a `fieldset` cannot
+  disable an anchor, `StageDownload` drops its own `href` while the workspace
+  is busy.
 - Malware preprocessed records are padded byte sequences, so the records panel
   adds a byte window (`token_offset` / `token_limit`) on top of the row pager
   and renders the tokens as hex, with padding shown as `··`.
-- Pipeline state lives in component state, so reloading the page starts over.
-  The backend session stays in memory until it is unloaded or the API restarts.
+- Pipeline state lives in component state, so reloading the page starts over,
+  and the session behind it is released rather than left behind. Deleting it is
+  the console's job alone: the API has no expiry of its own.
 
 ## Docker
 
@@ -114,3 +166,13 @@ service:
     ports:
       - "8000:8000"
 ```
+
+### Stage resets
+
+Each completed Clean, Split, and Prepare step has a reset button; Preprocess can
+also be reset once prepared data exists, including after a failed transform.
+Reset clears that stage and later results through the backend while retaining the
+loaded dataset and upstream results. Affected step forms and artifact selections
+reset, and the record browser returns to train. Pipeline actions, resets, and
+unload are mutually exclusive while a request is active. “Reset fractions” only
+restores the split form defaults; it does not clear server results.
