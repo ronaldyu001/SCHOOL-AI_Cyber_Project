@@ -3,3 +3,7 @@ uvicorn
 numpy
 scikit-learn
 httpx
+
+# Tokenizer artifacts only; no model weights or PyTorch needed.
+transformers>=4.45,<5
+huggingface-hub>=0.25,<1
