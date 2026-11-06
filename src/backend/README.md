@@ -181,3 +181,19 @@ Loaded records, source identity, and malware upload files remain available. The
 existing dataset DELETE endpoint still unloads the entire session. Persisted
 preprocessing artifacts are retained; resetting prepare or an earlier stage removes
 the session bindings, while resetting preprocess preserves those bindings.
+
+## Preprocessing token budgets
+
+The backend permits 16,000,000,000 malware tokens or 256,000,000 phishing tokens
+per preprocessing request. These cover the complete bundled datasets before
+cleaning/splitting at default input lengths: 11,923 malware files at 1,048,576 bytes
+and 82,486 emails at 1,024 tokens for each of two candidate pairs. Network
+intrusion has no token-count budget. Counts use ZIP file entries and CSV records,
+not newline counts, since email text can span multiple lines.
+
+The frontend maximum-input-length field has no upper cap. Backend model validation
+still restricts BART tokenizer lengths to 16–1,024; malware accepts positive
+integer lengths. Larger custom inputs may exceed the per-request token budget.
+These budgets count tokens, not RAM; the tuple-based implementation still
+materializes the full partition, so passing the guard does not ensure it fits
+in the process or Docker memory allocation.

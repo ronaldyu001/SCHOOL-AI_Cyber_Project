@@ -61,10 +61,22 @@ def add_artifact_routes(router, get_session, adapter):
                             headers={"Content-Disposition": f'attachment; filename="{exported.filename}"'})
 
 
+# Cover the complete bundled sources at default lengths, before cleaning/splitting:
+# malware: 11,923 * 1,048,576 = 12,502,171,648 tokens
+# phishing: 82,486 * 1,024 * 2 candidate pairs = 168,931,328 tokens
+PREPROCESSING_TOKEN_BUDGETS = {
+    "malware_detection": 16_000_000_000,
+    "phishing_detection": 256_000_000,
+}
+
+
 def check_input_budget(artifact, partition):
-    if artifact.task.value == "network_intrusion":
+    limit = PREPROCESSING_TOKEN_BUDGETS.get(artifact.task.value)
+    if limit is None:
         return
     settings = artifact.settings
     candidates = len(settings.get("candidate_labels", [None]))
-    if len(partition.records) * settings["max_length"] * candidates > 32_000_000:
-        raise ValueError("This partition exceeds the 32-million-token in-memory limit. Create an artifact with a shorter input length or use a smaller dataset.")
+    required = len(partition.records) * settings["max_length"] * candidates
+    if required > limit:
+        raise ValueError(f"This partition requires {required:,} tokens, exceeding the {limit:,}-token "
+                         "in-memory limit. Use a shorter input length or a smaller partition.")

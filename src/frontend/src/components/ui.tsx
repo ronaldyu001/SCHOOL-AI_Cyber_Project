@@ -84,7 +84,7 @@ interface NumberFieldProps {
   hint?: string;
   value: number;
   min: number;
-  max: number;
+  max?: number;
   step: number;
   disabled?: boolean;
   /** Marks the value as out of contract, so the border and assistive tech agree. */

@@ -50,7 +50,7 @@ export function PreprocessStep({ onReset, task, datasetId, preparedId, preproces
               : 'Packages byte encoding, padding, and truncation settings. No fitting is needed.'}</p>
           {task.slug === 'network_intrusion' ? null : (
             <NumberField id="artifact-length" label="Maximum input length" hint={task.slug === 'malware_detection' ? 'Bytes retained per file' : 'Tokens per candidate pair'}
-              value={maxLength} min={task.slug === 'malware_detection' ? 1 : 16} max={task.slug === 'malware_detection' ? 1048576 : 1024}
+              value={maxLength} min={task.slug === 'malware_detection' ? 1 : 16}
               step={1} disabled={busy} onChange={setMaxLength} />
           )}
           <div className="work__row">
