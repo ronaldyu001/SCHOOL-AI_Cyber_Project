@@ -4,6 +4,12 @@ numpy
 scikit-learn
 httpx
 
-# Tokenizer artifacts only; no model weights or PyTorch needed.
+# Model bundles and tokenizer artifacts (data-only loading).
 transformers>=4.45,<5
 huggingface-hub>=0.25,<1
+
+# Architecture runtimes for uploaded model bundles.
+torch>=2.6,<3
+safetensors>=0.4,<1
+tabm==0.0.3
+rtdl_num_embeddings==0.0.12

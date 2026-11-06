@@ -25,9 +25,11 @@ class PrepareRequest(RequestModel):
 class PreprocessRequest(RequestModel):
     prepared_id: str = Field(min_length=1)
     artifact_id: str | None = Field(default=None, pattern="^[0-9a-f]{64}$")
+    model_id: str | None = Field(default=None, min_length=1)
     partition: Literal["train", "test", "eval"] = "eval"
 
 class ArtifactRequest(RequestModel):
+    model_id: str | None = Field(default=None, min_length=1)
     prepared_id: str = Field(min_length=1)
     settings: dict[str, Any] = Field(default_factory=dict)
 
@@ -62,6 +64,7 @@ class PrepareResponse(BaseModel):
     eval_count: int
 
 class PreprocessResponse(BaseModel):
+    model_id: str | None = None
     dataset_id: str
     prepared_id: str
     preprocessed_id: str

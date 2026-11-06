@@ -116,6 +116,8 @@ def create_router(data_root: Path, preprocessor: NetworkIntrusionPreprocessorPor
 
     @router.post("/{dataset_id}/preprocess", response_model=PreprocessResponse, status_code=201)
     def preprocess_dataset(dataset_id: str, body: PreprocessRequest) -> PreprocessResponse:
+        if body.model_id is not None:
+            raise HTTPException(422, "model_id selects transformer tokenization and is only valid for phishing")
         session = get_session(dataset_id)
         with session.lock, artifact_errors():
             prepared = session.prepared.get(body.prepared_id)

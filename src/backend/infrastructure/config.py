@@ -17,37 +17,13 @@ class ModelImportFormat:
     requires_trusted_upload: bool = False
 
 
-MODEL_IMPORT_FORMATS = (
+MODEL_IMPORT_FORMATS = tuple(
     ModelImportFormat(
-        format_id="pickle_estimator",
-        extensions=(".pkl", ".pickle"),
-        adapter_key="pickle_estimator",
-        required_contents=(
-            "Fitted estimator implementing the supported prediction interface",
-            "Input feature schema and fitted preprocessing, bundled or supplied separately",
-        ),
-        requires_trusted_upload=True,
-    ),
-    ModelImportFormat(
-        format_id="tabm_checkpoint",
-        extensions=(".pt", ".pth"),
-        adapter_key="tabm_checkpoint",
-        required_contents=(
-            "Model weights and architecture configuration, including embedding bins",
-            "Ordered numeric and categorical feature names",
-            "Fitted numeric preprocessing and category mappings",
-        ),
-        requires_trusted_upload=True,
-    ),
-    ModelImportFormat(
-        format_id="onnx_model",
-        extensions=(".onnx",),
-        adapter_key="onnx",
-        required_contents=(
-            "ONNX computation graph and weights",
-            "Input/output schema and preprocessing requirements",
-        ),
-    ),
+        format_id=architecture + "_bundle", extensions=(".zip",), adapter_key=architecture,
+        required_contents=("manifest.json", "safetensors weights", "architecture configuration"),
+        enabled=True,
+    )
+    for architecture in ("transformer", "tabm", "malconv")
 )
 
 

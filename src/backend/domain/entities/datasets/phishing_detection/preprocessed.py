@@ -16,6 +16,8 @@ class PhishingDetectionPreprocessedDataset:
 
     artifact_id: str | None = None
     partition: str = "eval"
+    model_id: str | None = None
+    token_type_ids: tuple[tuple[tuple[int, ...], ...], ...] = ()
 
     def __post_init__(self) -> None:
         validate_preprocessing_reference(self.artifact_id, self.partition)
@@ -37,3 +39,10 @@ class PhishingDetectionPreprocessedDataset:
                 for tokens, mask in zip(pairs, masks):
                     if not tokens or len(tokens) != len(mask) or any(type(t) is not int or t < 0 for t in tokens) or any(m not in (0, 1) for m in mask):
                         raise ValueError("Invalid token IDs or attention masks")
+
+        if self.token_type_ids:
+            if len(self.token_type_ids) != len(self.input_ids):
+                raise ValueError("Token type IDs must align with tokenized samples")
+            for groups, pairs in zip(self.token_type_ids, self.input_ids):
+                if len(groups) != len(pairs) or any(len(group) != len(pair) or any(type(v) is not int or v < 0 for v in group) for group, pair in zip(groups, pairs)):
+                    raise ValueError("Token type IDs must align with candidate pairs")

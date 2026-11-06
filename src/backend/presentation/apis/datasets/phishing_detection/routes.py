@@ -42,7 +42,7 @@ class DatasetSession:
     lock: RLock = field(default_factory=RLock)
 
 
-def create_router(data_root: Path, sessions: dict[str, DatasetSession] | None = None, artifact_adapter=None) -> APIRouter:
+def create_router(data_root: Path, sessions: dict[str, DatasetSession] | None = None, artifact_adapter=None, model_store=None, model_runtime=None) -> APIRouter:
     router = APIRouter(prefix="/datasets/phishing_detection", tags=["phishing_detection datasets"])
     # Per-application memory, like the reference repo. No dataset reads at startup.
     sessions = {} if sessions is None else sessions
@@ -124,17 +124,31 @@ def create_router(data_root: Path, sessions: dict[str, DatasetSession] | None = 
             if body.artifact_id is not None:
                 artifact = get_artifact(session, artifact_adapter, body.prepared_id, body.artifact_id)
                 check_input_budget(artifact, getattr(prepared, body.partition))
-                selected_preprocessor = preprocessor_for(artifact_adapter, artifact)
+                if body.model_id is not None:
+                    if model_store is None or model_runtime is None:
+                        raise HTTPException(409, "Model service is not configured")
+                    from presentation.apis.models.routes import model_errors
+                    from infrastructure.adapters.preprocessing.phishing_detection.tokenizer_adapter import PhishingDetectionTokenizerPreprocessor
+                    with model_errors(), model_store.borrow(body.model_id) as (model, directory):
+                        if model.bundle.task != CyberTask.PHISHING_DETECTION:
+                            raise ValueError("Selected model must be a phishing transformer")
+                        tokenizer = (model_runtime.tokenizer(directory) if model.has_tokenizer
+                                     else artifact_adapter.load_tokenizer(artifact))
+                    selected_preprocessor = PhishingDetectionTokenizerPreprocessor(artifact, tokenizer)
+                else:
+                    selected_preprocessor = preprocessor_for(artifact_adapter, artifact)
             else:
+                if body.model_id is not None:
+                    raise ValueError("Select preprocessing artifacts when specifying model_id")
                 selected_preprocessor = PhishingDetectionTextPreprocessor()
                 if artifact_adapter is not None or selected_preprocessor is None:
                     raise HTTPException(409, "Create and select preprocessing artifacts first")
             transformed = PreprocessPhishingDetectionDataset(selected_preprocessor).execute(prepared, body.partition)
-            transformed = replace(transformed, artifact_id=body.artifact_id, partition=body.partition)
+            transformed = replace(transformed, artifact_id=body.artifact_id, partition=body.partition, model_id=body.model_id)
             preprocessed_id = str(uuid4())
             session.preprocessed[preprocessed_id] = transformed
             return PreprocessResponse(dataset_id=dataset_id, prepared_id=body.prepared_id,
-                                      preprocessed_id=preprocessed_id, artifact_id=body.artifact_id, partition=body.partition, sample_count=len(transformed.row_ids))
+                                      preprocessed_id=preprocessed_id, artifact_id=body.artifact_id, partition=body.partition, model_id=body.model_id, sample_count=len(transformed.row_ids))
 
     @router.get("/{dataset_id}/preprocessed/{preprocessed_id}", response_model=RecordsResponse)
     def preprocessed_records(dataset_id: str, preprocessed_id: str,
@@ -147,6 +161,7 @@ def create_router(data_root: Path, sessions: dict[str, DatasetSession] | None = 
             stop = min(offset + limit, len(transformed.row_ids))
             records = [dict(row_id=transformed.row_ids[i], text=transformed.texts[i], label=transformed.labels[i],
                             candidate_labels=transformed.candidate_labels,
+                            token_type_ids=[list(pair[:64]) for pair in transformed.token_type_ids[i]] if transformed.token_type_ids else [],
                             input_ids=[list(pair[:64]) for pair in transformed.input_ids[i]] if transformed.input_ids else [],
                             attention_mask=[list(pair[:64]) for pair in transformed.attention_mask[i]] if transformed.attention_mask else [],
                             token_length=len(transformed.input_ids[i][0]) if transformed.input_ids else 0)
@@ -162,5 +177,5 @@ def create_router(data_root: Path, sessions: dict[str, DatasetSession] | None = 
 
     add_reset_routes(router, get_session)
     add_download_routes(router, get_session, ExportPhishingDetectionDataset(PhishingDetectionZIPExporter()))
-    add_artifact_routes(router, get_session, artifact_adapter)
+    add_artifact_routes(router, get_session, artifact_adapter, model_store, model_runtime)
     return router

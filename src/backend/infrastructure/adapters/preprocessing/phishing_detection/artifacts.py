@@ -28,6 +28,12 @@ class PhishingDetectionArtifactAdapter(JSONArtifactStore, PhishingDetectionArtif
             raise ArtifactUnavailable("Tokenizer is unavailable; check connectivity or populate its local cache") from error
 
     def create(self, prepared, settings=None):
+        return self._create(prepared, settings)
+
+    def create_with_tokenizer(self, prepared, settings, tokenizer, model_id):
+        return self._create(prepared, settings, (tokenizer, model_id), "uploaded:" + model_id)
+
+    def _create(self, prepared, settings=None, selected=None, tokenizer_id=None):
         defaults = {"max_length": 1024, "padding": "max_length", "truncation": "only_first"}
         if settings and set(settings) - defaults.keys():
             raise ValueError("Unknown phishing preprocessing settings")
@@ -36,8 +42,8 @@ class PhishingDetectionArtifactAdapter(JSONArtifactStore, PhishingDetectionArtif
             raise ValueError("Tokenizer length must be between 16 and 1024")
         if defaults["padding"] != "max_length" or defaults["truncation"] != "only_first":
             raise ValueError("Unsupported tokenizer padding/truncation")
-        tokenizer, revision = self.tokenizer()
-        defaults.update({"tokenizer_id": self.model_id, "tokenizer_revision": revision,
+        tokenizer, revision = self.tokenizer() if selected is None else selected
+        defaults.update({"tokenizer_id": tokenizer_id or self.model_id, "tokenizer_revision": revision,
                          "candidate_labels": ["phishing email", "legitimate email"],
                          "hypothesis_template": "This example is {}.",
                          "vocabulary_size": len(tokenizer),

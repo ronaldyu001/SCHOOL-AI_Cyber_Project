@@ -7,7 +7,7 @@ class PhishingDetectionTokenizerPreprocessor(PhishingDetectionPreprocessorPort):
 
     def transform(self, source, partition):
         settings = self.artifacts.settings
-        ids, masks = [], []
+        ids, masks, types = [], [], []
         for record in partition.records:
             candidates = settings["candidate_labels"]
             pairs = self.tokenizer([record.text] * len(candidates),
@@ -15,7 +15,9 @@ class PhishingDetectionTokenizerPreprocessor(PhishingDetectionPreprocessorPort):
                 max_length=settings["max_length"], padding=settings["padding"], truncation=settings["truncation"],
                 return_attention_mask=True)
             ids.append(tuple(tuple(row) for row in pairs["input_ids"]))
+            if "token_type_ids" in pairs:
+                types.append(tuple(tuple(row) for row in pairs["token_type_ids"]))
             masks.append(tuple(tuple(row) for row in pairs["attention_mask"]))
         return PhishingDetectionPreprocessedDataset(source, partition.row_ids,
             tuple(r.text for r in partition.records), partition.labels,
-            tuple(ids), tuple(masks), tuple(settings["candidate_labels"]))
+            tuple(ids), tuple(masks), tuple(settings["candidate_labels"]), token_type_ids=tuple(types))

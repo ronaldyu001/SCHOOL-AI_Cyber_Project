@@ -111,7 +111,7 @@ Compose volume preserves `.artifacts` across container recreation.
 `create_app(artifact_root=...)` selects storage. The optional injected network and
 malware preprocessors remain available for existing trusted integrations. Default
 operation uses the backend-generated artifacts and requires no model checkpoint.
-User model uploads, inference, and explanations are separate integration work.
+Model uploads and inference are supported through `/models`; explanations remain separate integration work.
 
 ## Verify
 
@@ -197,3 +197,206 @@ integer lengths. Larger custom inputs may exceed the per-request token budget.
 These budgets count tokens, not RAM; the tuple-based implementation still
 materializes the full partition, so passing the guard does not ensure it fits
 in the process or Docker memory allocation.
+
+## Model uploads and inference
+
+Model code and output meaning belong to the backend. Upload a data-only ZIP with
+`manifest.json` and safetensors weights. Pickle, Python modules, custom Hugging
+Face code (`auto_map`), and remote downloads during model loading are unsupported.
+The dependency files now include PyTorch, safetensors, TabM 0.0.3 and numerical
+embeddings; install them or rebuild the backend image before using model routes.
+Loading is CPU-only. Trained model/tokenizer alignment and prediction quality are
+the user's responsibility; the backend checks structural configuration, loadable
+weights, and service output shape/meaning, not how a model was trained.
+
+### Endpoints
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| GET | `/models/capabilities` | Supported architectures, transformer families, output contracts |
+| POST | `/models/upload` | Raw ZIP body with `Content-Type: application/zip`; returns 201 and `model_id` after validation |
+| GET | `/models` | List validated uploaded models |
+| GET | `/models/{model_id}` | Model metadata and configuration |
+| GET | `/models/{model_id}/download` | Download the complete model bundle, including an optional tokenizer |
+| DELETE | `/models/{model_id}` | Release the model's files and registry entry; returns 204 |
+| POST | `/models/{model_id}/predict` | `{ "dataset_id": "...", "preprocessed_id": "..." }` |
+
+Model files are temporary and scoped to the application process. They are deleted
+on explicit model DELETE or application shutdown, and are not persisted in
+`.artifacts`. Dataset resets/unloads do not delete models, allowing model reuse
+across dataset sessions. The runtime loads weights per request and releases them
+afterward instead of retaining a second in-memory model cache. Use one worker
+for the current in-memory registries. ZIP requests/extracted contents are limited
+to 16 GiB, 1,024 files and 64 MiB per JSON file. Invalid model content returns 422,
+missing model/result IDs return 404, wrong upload content type returns 415, and
+missing runtime dependencies or unavailable default tokenizers return 503.
+
+### Transformer bundles and optional tokenizers
+
+```text
+manifest.json
+config.json
+model.safetensors                 # Or standard Hugging Face safetensors shards + index
+tokenizer/                       # Optional
+  tokenizer.json
+  tokenizer_config.json
+  special_tokens_map.json
+```
+
+The optional tokenizer directory accepts the same fast-tokenizer saved files
+as downloadable preprocessing bundles. `tokenizer.json` is required; special-token
+metadata, vocab/merge files, and SentencePiece data may also be included. The
+loader reconstructs the fast tokenizer from its data graph without executing
+uploaded code. It preserves pair token-type IDs for families such as BERT.
+
+Transformer `manifest.json`:
+
+```json
+{
+  "schema_version": 1,
+  "task": "phishing_detection",
+  "architecture": "transformer",
+  "config": {}
+}
+```
+
+Use the model's standard Hugging Face `config.json` at the ZIP root. Supported
+families: BART, BERT, RoBERTa, DistilBERT, ALBERT, ELECTRA, DeBERTa, DeBERTa-v2,
+and XLM-RoBERTa, using built-in sequence-classification implementations.
+Service-owned transformer outputs are **three NLI logits**, ordered contradiction,
+neutral, entailment. Binary two-logit classifiers and generative models are not
+part of this inference contract. Candidate texts remain `phishing email` then
+`legitimate email`, using `This example is {}.`. Inference normalizes the two
+entailment logits across candidates to obtain the phishing probability. Dataset
+labels remain 0=legitimate, 1=phishing. Uploaded id-to-label mappings do not override
+this service contract.
+
+After upload, create artifacts with the optional `model_id`:
+
+```json
+{
+  "prepared_id": "...",
+  "model_id": "...",
+  "settings": { "max_length": 512 }
+}
+```
+
+Send this to `POST /datasets/phishing_detection/{dataset_id}/artifacts`. If the
+model includes a tokenizer, the generated artifact packages it and no default
+tokenizer download is needed. Otherwise the usual default tokenizer is used.
+
+Then call `POST /datasets/phishing_detection/{dataset_id}/preprocess`:
+
+```json
+{
+  "prepared_id": "...",
+  "artifact_id": "...",
+  "model_id": "...",
+  "partition": "eval"
+}
+```
+
+A supplied model tokenizer overrides the artifact tokenizer. Without an uploaded
+tokenizer the artifact tokenizer is used. Without `model_id` the existing artifact
+preprocessing behavior remains unchanged. Results record `model_id`; transformer
+prediction requires a result preprocessed for that selected model. All fixed
+cleaning, split, candidate-label, padding/truncation, and dataset label rules remain
+service-owned. The existing 16–1,024 token-length validation still applies.
+
+### Configurable MalConv
+
+A MalConv bundle contains `manifest.json` and `model.safetensors`:
+
+```json
+{
+  "schema_version": 1,
+  "task": "malware_detection",
+  "architecture": "malconv",
+  "config": {
+    "embedding_dim": 8,
+    "channels": 128,
+    "kernel_size": 512,
+    "stride": 512,
+    "hidden_size": 128,
+    "activation": "ReLU",
+    "padding_idx": 256
+  }
+}
+```
+
+The backend implements gated convolutions, global max pooling, a configurable
+hidden layer and one output logit. Default weight names/shapes match the notebook's
+MalTorch MalConv; `embedding_dim` corresponds to MalTorch's `embedding_size`.
+Channel/hidden-width changes require training a matching configurable model.
+The sigmoid output is the malware probability: 0=benign, 1=malware. Input length
+comes from preprocessing, must accommodate the kernel, and padding must match
+`padding_idx` (0 or 256). Tokenizers are not accepted for this architecture.
+
+### Configurable TabM
+
+TabM bundles contain `manifest.json` and `model.safetensors`:
+
+```json
+{
+  "schema_version": 1,
+  "task": "network_intrusion",
+  "architecture": "tabm",
+  "config": {
+    "n_num_features": 16,
+    "cat_cardinalities": [2, 2, 2, 2, 2],
+    "n_blocks": 3,
+    "d_block": 512,
+    "k": 32,
+    "dropout": 0.1,
+    "activation": "ReLU",
+    "arch_type": "tabm",
+    "num_embeddings": null
+  }
+}
+```
+
+Use actual cardinalities from the selected network preprocessing artifact, not
+necessarily the example values. `n_blocks` controls depth; `d_block` is the shared
+hidden width (TabM does not expose independent widths for individual blocks).
+Supported variants are `tabm`, `tabm-mini`, and `tabm-packed`. Supported activations
+for TabM and MalConv are ReLU, GELU, SiLU, Tanh, LeakyReLU, and ELU.
+
+For the notebook's piecewise-linear numerical embeddings, replace `null` with:
+
+```json
+{
+  "bins": [[0.0, 1.0], [0.0, 1.0]],
+  "d_embedding": 16,
+  "activation": false,
+  "version": "B"
+}
+```
+
+The abbreviated bins example must be replaced with **16** strictly increasing,
+finite edge lists, one per numeric feature, exported from the training run.
+Embedding versions A and B are supported. Use explicit `n_blocks` matching the
+trained model (the notebook embedding model typically uses 2). Numerical and
+categorical feature order remain fixed. TabM has two logits per ensemble member;
+inference averages member probabilities, with 0=normal and 1=attack.
+
+### Notebook export helper
+
+Add this backend directory to the notebook's Python path and use
+`tools.export_model_bundle.export_model_bundle`:
+
+```python
+from tools.export_model_bundle import export_model_bundle
+
+export_model_bundle(
+    model,
+    task="phishing_detection",
+    architecture="transformer",
+    tokenizer=tokenizer,  # Optional: omit to use the service default
+    output="transformer-upload.zip",
+)
+```
+
+For TabM/MalConv, supply `config` matching the examples above, omit `tokenizer`,
+and use the corresponding task/architecture. The helper exports tensor weights
+and JSON only; it does not serialize a Python model object. TabM embedding bins
+must be converted with `[edges.cpu().tolist() for edges in bins]` in the config.

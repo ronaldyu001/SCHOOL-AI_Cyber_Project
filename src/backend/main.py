@@ -2,6 +2,9 @@
 from infrastructure.adapters.preprocessing.network_intrusion.artifacts import NetworkIntrusionArtifactAdapter
 from infrastructure.adapters.preprocessing.malware_detection.artifacts import MalwareDetectionArtifactAdapter
 from infrastructure.adapters.preprocessing.phishing_detection.artifacts import PhishingDetectionArtifactAdapter
+from infrastructure.adapters.models.store import ModelBundleStore
+from infrastructure.adapters.models.runtime import ModelRuntime
+from presentation.apis.models.routes import create_router as models_router
 from pathlib import Path
 from fastapi import FastAPI
 from application.ports.preprocessing.malware_detection import MalwareDetectionPreprocessorPort
@@ -17,13 +20,20 @@ def create_app(data_root: Path | None = None, network_preprocessor: NetworkIntru
     app = FastAPI(title="AI Cybersecurity Dataset API")
     root = Path(data_root) if data_root is not None else Path(__file__).resolve().parent / ".data"
     artifact_root = Path(artifact_root) if artifact_root is not None else Path(__file__).resolve().parent / ".artifacts"
+    app.state.model_store = ModelBundleStore()
+    app.state.model_runtime = ModelRuntime()
     app.state.preprocessing_artifact_root = artifact_root
     app.state.network_intrusion_datasets = {}
     app.state.phishing_detection_datasets = {}
     app.state.malware_detection_datasets = {}
     app.include_router(network_router(root, network_preprocessor, app.state.network_intrusion_datasets, artifact_adapter=None if network_preprocessor else NetworkIntrusionArtifactAdapter(artifact_root)))
-    app.include_router(phishing_router(root, app.state.phishing_detection_datasets, artifact_adapter=phishing_artifact_adapter or PhishingDetectionArtifactAdapter(artifact_root)))
+    app.include_router(phishing_router(root, app.state.phishing_detection_datasets, artifact_adapter=phishing_artifact_adapter or PhishingDetectionArtifactAdapter(artifact_root), model_store=app.state.model_store, model_runtime=app.state.model_runtime))
     app.include_router(malware_router(root, malware_preprocessor, app.state.malware_detection_datasets, artifact_adapter=None if malware_preprocessor else MalwareDetectionArtifactAdapter(artifact_root)))
+    app.include_router(models_router(app.state.model_store, app.state.model_runtime, {
+        "network_intrusion": app.state.network_intrusion_datasets,
+        "malware_detection": app.state.malware_detection_datasets,
+        "phishing_detection": app.state.phishing_detection_datasets,
+    }))
     return app
 
 

@@ -5,6 +5,7 @@ from presentation.apis.datasets.schemas import ArtifactRequest
 from presentation.apis.datasets.errors import dataset_errors
 from infrastructure.adapters.preprocessing.artifact_store import ArtifactUnavailable
 from contextlib import contextmanager
+from presentation.apis.models.routes import model_errors
 
 @contextmanager
 def artifact_errors():
@@ -23,17 +24,17 @@ def get_artifact(session, adapter, prepared_id, artifact_id):
     return adapter.load(artifact_id)
 
 
-def add_artifact_routes(router, get_session, adapter):
+def add_artifact_routes(router, get_session, adapter, model_store=None, model_runtime=None):
     @router.post("/{dataset_id}/artifacts", status_code=201)
     def create_artifact(dataset_id: str, body: ArtifactRequest):
         session = get_session(dataset_id)
-        with session.lock, artifact_errors():
+        with session.lock, artifact_errors(), model_errors():
             prepared = session.prepared.get(body.prepared_id)
             if prepared is None:
                 raise HTTPException(404, "Prepared dataset not found for this dataset")
             if adapter is None:
                 raise HTTPException(409, "Artifact service is not configured")
-            artifact = CreatePreprocessingArtifacts(adapter).execute(prepared, body.settings)
+            artifact = CreatePreprocessingArtifacts(adapter, model_store, model_runtime).execute(prepared, body.settings, body.model_id)
             session.artifact_bindings.setdefault(body.prepared_id, set()).add(artifact.artifact_id)
             return {"artifact_id": artifact.artifact_id, "manifest": artifact.manifest}
 
