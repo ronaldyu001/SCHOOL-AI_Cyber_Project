@@ -88,7 +88,7 @@ Create them after preparation, then select one to preprocess any partition:
 | GET | `/{dataset_id}/artifacts/{artifact_id}` | Inspect manifest, settings, fitted statistics, file fingerprints, and provenance. |
 | GET | `/{dataset_id}/artifacts/{artifact_id}/download` | Download the complete portable ZIP. |
 
-Default storage is `.artifacts/<artifact-id>/manifest.json`, with a `tokenizer/`
+Default storage is `.artifacts/<cybertask>/<artifact-id>/manifest.json`, with a `tokenizer/`
 subdirectory for phishing. Each ID hashes the canonical manifest, which includes
 checksums for packaged files and a fingerprint of training membership/data.
 Repeated identical creation reuses the bundle; changed settings or training data
@@ -100,7 +100,7 @@ The frontend exposes creation, selection, settings inspection, download, and
 partition choice. API artifact references are scoped to the owning dataset and
 prepared partition set. Missing prerequisites return 409, unavailable tokenizer
 sources return 503, and invalid settings return 422. Failed creation publishes no
-bundle. Transformations are limited to 32 million total tokens to bound retained
+bundle. Transformations use the task-specific token budgets described below to bound retained
 in-memory output; reduce maximum length or dataset size if exceeded.
 
 Artifact files persist after dataset deletion and app restart. Dataset sessions
@@ -111,7 +111,7 @@ Compose volume preserves `.artifacts` across container recreation.
 `create_app(artifact_root=...)` selects storage. The optional injected network and
 malware preprocessors remain available for existing trusted integrations. Default
 operation uses the backend-generated artifacts and requires no model checkpoint.
-Model uploads and inference are supported through `/models`; explanations remain separate integration work.
+Model uploads and inference are supported through `/models`; saved evaluation and explanations are available through `/results`.
 
 ## Verify
 
@@ -175,12 +175,13 @@ lock, and is idempotent. Missing datasets return 404; unsupported stages return 
 | `cleaned` | Cleaned data, splits, prepared datasets, artifact bindings, preprocessed results |
 | `splits` | Splits, prepared datasets, artifact bindings, preprocessed results |
 | `prepared` | Prepared datasets, artifact bindings, preprocessed results |
-| `preprocessed` | Preprocessed results only |
+| `preprocessed` | Preprocessed results and session artifact bindings |
 
 Loaded records, source identity, and malware upload files remain available. The
-existing dataset DELETE endpoint still unloads the entire session. Persisted
-preprocessing artifacts are retained; resetting prepare or an earlier stage removes
-the session bindings, while resetting preprocess preserves those bindings.
+existing dataset DELETE endpoint still unloads the entire session. Every reset or
+unload also deletes the dataset's saved prediction/analysis results and removes its
+artifact bindings. Artifact files are deleted when no other active dataset uses
+them. Uploaded models remain reusable until explicitly deleted or the API stops.
 
 ## Preprocessing token budgets
 
@@ -400,3 +401,172 @@ For TabM/MalConv, supply `config` matching the examples above, omit `tokenizer`,
 and use the corresponding task/architecture. The helper exports tensor weights
 and JSON only; it does not serialize a Python model object. TabM embedding bins
 must be converted with `[edges.cpu().tolist() for edges in bins]` in the config.
+
+## Local notebook baselines
+
+Baseline model files are packaged under `.models/<cybertask>/` in this backend:
+
+| Directory | Notebook baseline |
+| --- | --- |
+| `.models/phishing_detection/` | Cached `facebook/bart-large-mnli`, revision `d7645e127eaf1aefc7862fd59a17a5aa8558b8ce`, without fine-tuning |
+| `.models/network_intrusion/` | TabM checkpoint `20261015_095219_939710/epoch_026.pt`, selected by the notebook |
+| `.models/malware_detection/` | MalConv checkpoint `20261104_131637_676400/best.pt`, epoch 1 |
+
+Each directory contains safetensors weights, the model manifest, `preprocessing.json`,
+`baseline.json` with source/checkpoint details and file checksums, and an upload-ready
+`baseline.zip`. The transformer also includes its Hugging Face config and tokenizer.
+TabM preprocessing preserves the checkpoint's actual fitted imputation, scaling,
+and category mappings; numerical embedding bins are included in its manifest.
+`preprocessing.json` is a companion reference, not an extra model-upload member.
+
+The files are local and Git-ignored. To reproduce them from the existing trusted
+notebook checkpoints and local Hugging Face cache, run from the repository root:
+
+```sh
+PYTHONPATH=src/backend src/backend/.venv/bin/python src/backend/tools/prepare_baseline_models.py
+```
+
+The script refuses to replace an existing task directory. No training or network
+download is performed. Baselines are not loaded at server startup; submit the
+chosen `baseline.zip` to `/models/upload` when needed.
+
+## Saved prediction results and analysis
+
+Every successful `POST /models/{model_id}/predict` now saves a result and returns
+`result_id` and `task` in addition to the existing prediction payload. Files live
+under `.results/<cybertask>/<result_id>/`:
+
+```text
+metadata.json           # Dataset/model/artifact references, partition, timestamp, output contract
+predictions.json        # Row IDs, true labels, probabilities, predicted labels
+inputs.zip              # Per-sample compressed NumPy inputs; no pickle
+model/                  # Immutable model and optional tokenizer snapshot
+preprocessing/          # Selected artifact and tokenizer snapshot, when present
+analyses/<analysis_id>.json
+```
+
+Snapshots allow analysis after the original uploaded model is deleted or the API
+restarts. They preserve exact preprocessed inputs, including attention/type IDs
+and premise masks, rather than retokenizing or preprocessing differently for XAI.
+Model files use hard links when available, with copies as a filesystem fallback;
+no extra model is retained in process memory. Result writes and analysis writes
+are atomic. The Compose `analysis-results` volume persists `.results`; both
+`.results` and `.artifacts` are excluded from image build context and Git.
+
+### Result APIs
+
+| Method | Route | Behavior |
+| --- | --- | --- |
+| GET | `/results/{task}` | List result metadata; optional `dataset_id` filter |
+| GET | `/results/{task}/{result_id}` | Metadata and prediction rows; `offset=0`, `limit=100` (maximum 1,000) |
+| DELETE | `/results/{task}/{result_id}` | Delete predictions, inputs, snapshots and all associated analyses |
+| DELETE | `/results/{task}` | Delete all saved results for that task |
+| GET | `/results/{task}/{result_id}/download` | ZIP of metadata, prediction rows and analysis JSON; excludes model/input snapshots |
+| POST | `/results/{task}/{result_id}/analysis` | Calculate and save evaluation, optionally with explanations; returns 201 |
+| GET | `/results/{task}/{result_id}/analysis` | List analysis IDs and parameters |
+| GET | `/results/{task}/{result_id}/analysis/{analysis_id}` | Read a saved analysis payload |
+| DELETE | `/results/{task}/{result_id}/analysis/{analysis_id}` | Delete one analysis |
+
+`task` is `network_intrusion`, `malware_detection`, or `phishing_detection`.
+Example analysis request:
+
+```json
+{
+  "explain": true,
+  "row_ids": [17, 42],
+  "n_steps": 24,
+  "internal_batch_size": 2,
+  "n_repeats": 5,
+  "seed": 123,
+  "include_byte_attributions": false
+}
+```
+
+Send `{}` for evaluation only. If `explain=true` and `row_ids` is omitted, a
+seeded class-balanced sample is selected (up to `sample_count`, default 4).
+Explicit row IDs refer to original dataset IDs, not positional indices. All
+rows selected must belong to the saved result. Maximum selected sample count is
+2,000; IG steps range 2–512, internal batch size 1–64, and permutation repeats
+1–100. Analyses run synchronously on CPU; use a small sample for token/byte XAI.
+Failed analyses do not publish a partial analysis file.
+
+### Graph payload contract
+
+Each analysis response contains `schema_version`, `task`, `result_id`,
+`analysis_id`, `created_at`, `parameters`, `evaluation`, and `explainability`.
+Evaluation always covers the **whole saved partition**, even when XAI uses a subset.
+
+| Payload field | Frontend use |
+| --- | --- |
+| `evaluation.metrics` | Log loss, accuracy, precision, recall, F1, ROC-AUC, average-precision cards |
+| `evaluation.classification_report` | Per-class and macro/weighted precision, recall, F1 and support tables |
+| `evaluation.confusion_matrix` | `labels` and 2×2 `values`; rows are true classes, columns predicted classes |
+| `evaluation.roc_curve` | Aligned `false_positive_rate`, `true_positive_rate`, `thresholds` arrays |
+| `evaluation.precision_recall_curve` | `precision`, `recall`, `thresholds`; thresholds has one fewer element, as in sklearn |
+| `explainability.samples` | Per-row attributions, target/baseline values and convergence deltas |
+
+All payloads are JSON with finite numbers or explicit nulls, never NumPy objects,
+NaN, Infinity, images or HTML. ROC's initial infinite threshold is encoded as null.
+If the true labels contain only one class, ROC-AUC/AP/curves are null and a warning
+explains why. Empty results cannot be evaluated. Predictions use the service's
+fixed 0.5 threshold and output-label contract.
+
+XAI follows the notebook methods:
+
+- **Network:** Integrated Gradients for attack probability with zero standardized
+  numeric inputs and fixed categories. Per-row signed numeric attributions and
+  numeric feature values support waterfall/beeswarm plots. `global_importance`
+  gives numeric `features` and `mean_absolute_attribution` bar heights.
+  `feature_permutation` covers numeric and categorical features, with `features`,
+  `feature_types`, mean `importance`, and `std` across repeats. Its target is the
+  drop in true-class probability. Permutation requires at least two selected rows.
+- **Malware:** Layer Integrated Gradients through the byte embedding, targeting
+  the malware logit against an all-padding baseline. Each row includes `windows`
+  with start/end offsets and signed attribution, `regions` with PE-region totals,
+  `region_spans`, `top_bytes`, hash, logit/probability, and convergence delta.
+  `include_byte_attributions=true` additionally returns the full per-byte array;
+  otherwise the window/region arrays keep plotting payloads manageable. Final
+  partial windows are included. PE data is parsed as bytes and never executed.
+- **Phishing:** Integrated Gradients for the phishing-minus-legitimate entailment
+  margin. Only email-token embeddings change; hypotheses, special tokens, masks
+  and positions remain fixed. Per-row `tokens`, `token_ids`, and signed
+  `attributions` support token heatmaps; `global_token_importance` supports bars.
+  Margin, baseline margin, probability, retained-token count and convergence
+  delta are included. The embedding-forward calculation is checked against the
+  model's ordinary forward calculation before returning an explanation.
+
+Positive network/phishing attributions push toward attack/phishing; positive byte
+attributions push the malware logit upward. Attribution units differ by target,
+so do not compare raw magnitudes across tasks. `convergence_delta` is signed and
+can be displayed as an absolute error measure. The implementation supports the
+same built-in transformer families as model upload, without custom uploaded code.
+
+### Artifact and result cleanup
+
+Persisted artifacts can now be managed independently of session bindings:
+
+| Method | Route | Behavior |
+| --- | --- | --- |
+| GET | `/artifacts/{task}` | List stored artifacts for a task |
+| GET | `/artifacts/{task}/{artifact_id}` | Inspect manifest |
+| GET | `/artifacts/{task}/{artifact_id}/download` | Download artifact ZIP |
+| DELETE | `/artifacts/{task}/{artifact_id}` | Delete artifact and its saved results; invalidate bound preprocessed inputs |
+| DELETE | `/artifacts/{task}` | Delete all task artifacts and their dependent results |
+
+The existing dataset-owned route also supports
+`DELETE /datasets/{task}/{dataset_id}/artifacts/{artifact_id}` with the same
+dependency cleanup, after verifying that the dataset owns the artifact.
+
+New artifacts use task subfolders; legacy `.artifacts/<artifact_id>` bundles remain
+readable, listable and deletable under their original task. Reusable default
+tokenizer download caches are distinct from published artifact bundles.
+
+**Any dataset stage reset or dataset unload deletes that dataset's saved results
+and analyses.** All artifact bindings for that session are removed at the same
+time, including on a preprocess reset; files remain only if another active dataset
+still binds them. Earlier loaded/cleaned/split/prepared state follows the ordinary
+stage reset rules. Explicit deletion of a result does not delete its live dataset
+or uploaded model. Result snapshots survive API restarts until explicitly removed;
+after restart, use task-scoped result/artifact delete routes to remove unbound data.
+Storage operations use a consistent lock order so deletion waits for an in-flight
+analysis or prediction rather than removing files while they are in use.

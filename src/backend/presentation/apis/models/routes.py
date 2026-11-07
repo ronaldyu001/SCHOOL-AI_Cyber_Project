@@ -1,5 +1,6 @@
 """Model bundle upload, inspection, download, inference and release."""
 from contextlib import asynccontextmanager, contextmanager
+from threading import RLock
 from tempfile import SpooledTemporaryFile
 from zipfile import ZipFile, ZIP_DEFLATED
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -37,7 +38,7 @@ class PredictRequest(BaseModel):
     preprocessed_id: str = Field(min_length=1)
 
 
-def create_router(store, runtime, dataset_sessions):
+def create_router(store, runtime, dataset_sessions, results=None, artifacts=None, storage_lock=None):
     @asynccontextmanager
     async def lifespan(app):
         try:
@@ -45,6 +46,7 @@ def create_router(store, runtime, dataset_sessions):
         finally:
             store.close()
 
+    storage_lock = storage_lock or RLock()
     router = APIRouter(prefix='/models', tags=['models'], lifespan=lifespan)
 
     @router.get('/capabilities')
@@ -119,10 +121,17 @@ def create_router(store, runtime, dataset_sessions):
             session = sessions.get(body.dataset_id)
             if session is None:
                 raise HTTPException(404, 'Dataset not found for this model task')
-            with session.lock:
+            with storage_lock, session.lock:
+                if sessions.get(body.dataset_id) is not session:
+                    raise HTTPException(404, "Dataset was unloaded before prediction started")
                 dataset = session.preprocessed.get(body.preprocessed_id)
                 if dataset is None:
                     raise HTTPException(404, 'Preprocessed result not found for this dataset')
-                return PredictModel(store, runtime).execute(model_id, dataset)
+                context = dict(dataset_id=body.dataset_id, preprocessed_id=body.preprocessed_id)
+                if dataset.artifact_id is not None and artifacts is not None:
+                    adapter = artifacts[dataset.source.task.value]
+                    adapter.load(dataset.artifact_id)
+                    context['artifact_directory'] = adapter.path(dataset.artifact_id)
+                return PredictModel(store, runtime, results).execute(model_id, dataset, context)
 
     return router

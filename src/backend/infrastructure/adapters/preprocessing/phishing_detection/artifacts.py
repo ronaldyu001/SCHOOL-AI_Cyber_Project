@@ -20,7 +20,7 @@ class PhishingDetectionArtifactAdapter(JSONArtifactStore, PhishingDetectionArtif
         from transformers import AutoTokenizer
         try:
             folder = snapshot_download(self.model_id, revision=self.revision,
-                cache_dir=str(self.root / ".tokenizer-cache"),
+                cache_dir=str((self.base_root if (self.base_root / ".tokenizer-cache").exists() else self.root) / ".tokenizer-cache"),
                 allow_patterns=["tokenizer.json", "tokenizer_config.json", "vocab.json", "merges.txt", "special_tokens_map.json", "config.json"])
             tokenizer = AutoTokenizer.from_pretrained(folder, local_files_only=True, trust_remote_code=False)
             return tokenizer, Path(folder).name

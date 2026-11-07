@@ -24,11 +24,14 @@ def get_artifact(session, adapter, prepared_id, artifact_id):
     return adapter.load(artifact_id)
 
 
-def add_artifact_routes(router, get_session, adapter, model_store=None, model_runtime=None):
+def add_artifact_routes(router, get_session, adapter, model_store=None, model_runtime=None, storage_lock=None, delete_artifact=None):
+    from threading import RLock
+    storage_lock = storage_lock or RLock()
     @router.post("/{dataset_id}/artifacts", status_code=201)
     def create_artifact(dataset_id: str, body: ArtifactRequest):
         session = get_session(dataset_id)
-        with session.lock, artifact_errors(), model_errors():
+        with storage_lock, session.lock, artifact_errors(), model_errors():
+            session = get_session(dataset_id)
             prepared = session.prepared.get(body.prepared_id)
             if prepared is None:
                 raise HTTPException(404, "Prepared dataset not found for this dataset")
@@ -48,14 +51,28 @@ def add_artifact_routes(router, get_session, adapter, model_store=None, model_ru
     @router.get("/{dataset_id}/artifacts/{artifact_id}")
     def inspect_artifact(dataset_id: str, artifact_id: str):
         session = get_session(dataset_id)
-        with session.lock, artifact_errors():
+        with storage_lock, session.lock, artifact_errors():
             artifact = owned_artifact(session, artifact_id)
             return {"artifact_id": artifact.artifact_id, "manifest": artifact.manifest}
+
+    @router.delete("/{dataset_id}/artifacts/{artifact_id}", status_code=204)
+    def delete_owned_artifact(dataset_id: str, artifact_id: str):
+        session = get_session(dataset_id)
+        with storage_lock, session.lock, artifact_errors():
+            owned_artifact(session, artifact_id)
+            if delete_artifact is not None:
+                delete_artifact(artifact_id)
+            else:
+                adapter.delete(artifact_id)
+                for bindings in session.artifact_bindings.values(): bindings.discard(artifact_id)
+                for result_id, data in list(session.preprocessed.items()):
+                    if data.artifact_id == artifact_id: del session.preprocessed[result_id]
+        return Response(status_code=204)
 
     @router.get("/{dataset_id}/artifacts/{artifact_id}/download")
     def download_artifact(dataset_id: str, artifact_id: str):
         session = get_session(dataset_id)
-        with session.lock, artifact_errors():
+        with storage_lock, session.lock, artifact_errors():
             owned_artifact(session, artifact_id)
             exported = ExportPreprocessingArtifacts(adapter).execute(artifact_id)
             return Response(exported.content, media_type=exported.media_type,

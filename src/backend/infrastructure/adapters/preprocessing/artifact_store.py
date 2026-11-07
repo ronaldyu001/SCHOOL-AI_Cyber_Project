@@ -1,6 +1,7 @@
 """Content-addressed JSON/tokenizer storage; no pickle or uploaded code."""
 from hashlib import sha256
 import io
+import json
 from pathlib import Path
 import re
 import shutil
@@ -20,12 +21,18 @@ class JSONArtifactStore:
     task = None
 
     def __init__(self, root: Path):
-        self.root = Path(root)
+        self.base_root = Path(root)
+        self.root = self.base_root / self.task
 
     def path(self, artifact_id):
         if not isinstance(artifact_id, str) or not re.fullmatch("[0-9a-f]{64}", artifact_id):
             raise ValueError("Invalid artifact ID")
-        return self.root / artifact_id
+        destination = self.root / artifact_id
+        legacy = self.base_root / artifact_id
+        if not destination.exists() and (legacy / 'manifest.json').is_file():
+            if json.loads((legacy / 'manifest.json').read_text()).get('task') == self.task:
+                return legacy
+        return destination
 
     def save(self, prepared, settings, files=None):
         files = files or {}
@@ -76,3 +83,29 @@ class JSONArtifactStore:
             for name in sorted(artifact.manifest["files"]):
                 archive.writestr(name, (self.path(artifact_id) / name).read_bytes())
         return ExportedArtifact(output.getvalue(), f"{self.task}-{artifact_id}.zip")
+
+    def list(self):
+        found = {}
+        candidates = [(path, False) for path in self.root.glob('*')]
+        candidates += [(path, True) for path in self.base_root.glob('*')]
+        for folder, legacy in candidates:
+            if not re.fullmatch('[0-9a-f]{64}', folder.name) or not folder.is_dir() or folder.is_symlink(): continue
+            if legacy:
+                try:
+                    if json.loads((folder / 'manifest.json').read_text()).get('task') != self.task: continue
+                except (ValueError, OSError):
+                    continue  # An unscoped damaged legacy folder cannot be attributed to a task safely.
+            try:
+                artifact = self.load(folder.name)
+                found[folder.name] = dict(artifact_id=artifact.artifact_id, manifest=artifact.manifest, valid=True)
+            except (ValueError, OSError):
+                found[folder.name] = dict(artifact_id=folder.name, task=self.task, valid=False,
+                                          error='Artifact bundle is damaged; delete and recreate it')
+        return [found[key] for key in sorted(found)]
+
+    def delete(self, artifact_id):
+        folder = self.path(artifact_id)
+        if not folder.is_dir(): raise FileNotFoundError("Artifact not found")
+        if folder.is_symlink(): raise ValueError("Artifact directory must not be a symlink")
+        # Scoped paths allow removing damaged bundles without requiring valid checksums.
+        shutil.rmtree(folder)

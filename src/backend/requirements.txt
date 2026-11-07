@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-numpy
+numpy>=1.26,<2
 scikit-learn
 httpx
 
@@ -13,3 +13,7 @@ torch>=2.6,<3
 safetensors>=0.4,<1
 tabm==0.0.3
 rtdl_num_embeddings==0.0.12
+
+# Notebook explainability methods.
+captum>=0.8,<1
+matplotlib>=3.5,<3.10

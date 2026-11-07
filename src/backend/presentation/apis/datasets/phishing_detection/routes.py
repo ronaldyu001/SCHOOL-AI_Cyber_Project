@@ -42,7 +42,8 @@ class DatasetSession:
     lock: RLock = field(default_factory=RLock)
 
 
-def create_router(data_root: Path, sessions: dict[str, DatasetSession] | None = None, artifact_adapter=None, model_store=None, model_runtime=None) -> APIRouter:
+def create_router(data_root: Path, sessions: dict[str, DatasetSession] | None = None, artifact_adapter=None, model_store=None, model_runtime=None, cleanup=None, storage_lock=None, delete_artifact=None) -> APIRouter:
+    storage_lock = storage_lock or RLock()
     router = APIRouter(prefix="/datasets/phishing_detection", tags=["phishing_detection datasets"])
     # Per-application memory, like the reference repo. No dataset reads at startup.
     sessions = {} if sessions is None else sessions
@@ -59,14 +60,15 @@ def create_router(data_root: Path, sessions: dict[str, DatasetSession] | None = 
             path, source = bundled_source(data_root, CyberTask.PHISHING_DETECTION, "phishing_email.csv")
             loaded = LoadPhishingDetectionDataset(PhishingDetectionCSVAdapter(path)).execute(source)
         dataset_id = str(uuid4())
-        sessions[dataset_id] = DatasetSession(loaded)
+        with storage_lock:
+            sessions[dataset_id] = DatasetSession(loaded)
         return SourceResponse(dataset_id=dataset_id, task=source.task.value, filename=path.name,
                               version=source.version, sample_count=loaded.sample_count, columns=list(loaded.columns))
 
     @router.post("/{dataset_id}/clean", response_model=CleanResponse)
     def clean_dataset(dataset_id: str) -> CleanResponse:
         session = get_session(dataset_id)
-        with session.lock, dataset_errors():
+        with storage_lock, session.lock, dataset_errors():
             if session.cleaned is None:
                 session.cleaned = CleanPhishingDetectionDataset().execute(session.loaded)
             cleaned = session.cleaned
@@ -76,7 +78,7 @@ def create_router(data_root: Path, sessions: dict[str, DatasetSession] | None = 
     @router.post("/{dataset_id}/splits", response_model=SplitResponse, status_code=201)
     def create_split(dataset_id: str, body: SplitRequest) -> SplitResponse:
         session = get_session(dataset_id)
-        with session.lock, dataset_errors():
+        with storage_lock, session.lock, dataset_errors():
             if session.cleaned is None:
                 raise HTTPException(409, "Clean the dataset before creating a split")
             policy = PhishingDetectionSplitPolicy(seed=body.seed, train_fraction=body.train_fraction,
@@ -90,7 +92,7 @@ def create_router(data_root: Path, sessions: dict[str, DatasetSession] | None = 
     @router.post("/{dataset_id}/prepare", response_model=PrepareResponse, status_code=201)
     def prepare_dataset(dataset_id: str, body: PrepareRequest) -> PrepareResponse:
         session = get_session(dataset_id)
-        with session.lock, dataset_errors():
+        with storage_lock, session.lock, dataset_errors():
             split = session.splits.get(body.split_id)
             if split is None:
                 raise HTTPException(404, "Split not found for this dataset")
@@ -106,7 +108,7 @@ def create_router(data_root: Path, sessions: dict[str, DatasetSession] | None = 
     def partition_records(dataset_id: str, prepared_id: str, partition: Literal["train", "test", "eval"],
                           offset: int = Query(default=0, ge=0), limit: int = Query(default=100, ge=1, le=1000)) -> RecordsResponse:
         session = get_session(dataset_id)
-        with session.lock:
+        with storage_lock, session.lock:
             prepared = session.prepared.get(prepared_id)
             if prepared is None:
                 raise HTTPException(404, "Prepared dataset not found for this dataset")
@@ -117,7 +119,7 @@ def create_router(data_root: Path, sessions: dict[str, DatasetSession] | None = 
     @router.post("/{dataset_id}/preprocess", response_model=PreprocessResponse, status_code=201)
     def preprocess_dataset(dataset_id: str, body: PreprocessRequest) -> PreprocessResponse:
         session = get_session(dataset_id)
-        with session.lock, artifact_errors():
+        with storage_lock, session.lock, artifact_errors():
             prepared = session.prepared.get(body.prepared_id)
             if prepared is None:
                 raise HTTPException(404, "Prepared dataset not found for this dataset")
@@ -154,7 +156,7 @@ def create_router(data_root: Path, sessions: dict[str, DatasetSession] | None = 
     def preprocessed_records(dataset_id: str, preprocessed_id: str,
                              offset: int = Query(default=0, ge=0), limit: int = Query(default=100, ge=1, le=1000)) -> RecordsResponse:
         session = get_session(dataset_id)
-        with session.lock:
+        with storage_lock, session.lock:
             transformed = session.preprocessed.get(preprocessed_id)
             if transformed is None:
                 raise HTTPException(404, "Preprocessed data not found for this dataset")
@@ -171,11 +173,12 @@ def create_router(data_root: Path, sessions: dict[str, DatasetSession] | None = 
     @router.delete("/{dataset_id}", status_code=204)
     def unload_dataset(dataset_id: str) -> Response:
         session = get_session(dataset_id)
-        with session.lock:
+        with storage_lock, session.lock:
+            if cleanup is not None: cleanup(dataset_id, session)
             sessions.pop(dataset_id, None)
         return Response(status_code=204)
 
-    add_reset_routes(router, get_session)
+    add_reset_routes(router, get_session, cleanup, storage_lock)
     add_download_routes(router, get_session, ExportPhishingDetectionDataset(PhishingDetectionZIPExporter()))
-    add_artifact_routes(router, get_session, artifact_adapter, model_store, model_runtime)
+    add_artifact_routes(router, get_session, artifact_adapter, model_store, model_runtime, storage_lock, delete_artifact)
     return router
