@@ -5,16 +5,20 @@
  * workspace that is simply navigated away from — a task change, a return to the
  * task list, a closed tab — would leave its loaded dataset resident for the
  * life of the server.
+ *
+ * `hold` stops that. Unloading a dataset also deletes the predictions saved
+ * from it, so once this session has produced one, freeing memory is no longer
+ * the frontend's call to make silently: the user unloads deliberately instead.
  */
 import { useEffect, useRef } from 'react';
 import { releaseDataset, type TaskSlug } from '../../api/datasets';
 
-export function useSessionRelease(slug: TaskSlug, datasetId: string | null) {
+export function useSessionRelease(slug: TaskSlug, datasetId: string | null, hold = false) {
   const active = useRef<string | null>(null);
 
   useEffect(() => {
-    active.current = datasetId;
-  }, [datasetId]);
+    active.current = hold ? null : datasetId;
+  }, [datasetId, hold]);
 
   useEffect(() => {
     const release = () => {

@@ -9,6 +9,7 @@ src/
   api/        Typed client for the dataset endpoints (mirrors the backend schemas)
   app/        Root navigator (persistent header) and route table
   components/ Shared primitives: button, badge, status note, step card, record table
+  models/     The registered-model list, read by the model step
   pages/      Task selection (landing) and the per-task dataset workspace
   styles/     Design tokens and global styles
   tasks/      Task catalog and record-to-table mapping
@@ -62,8 +63,11 @@ the one before it has run:
 2. `POST /datasets/{task}/{id}/clean`
 3. `POST /datasets/{task}/{id}/splits`
 4. `POST /datasets/{task}/{id}/prepare`
-5. `POST /datasets/{task}/{id}/artifacts`, then
+5. `POST /models/baselines/{task}/load`, or `POST /models/upload` for your own
+6. `POST /datasets/{task}/{id}/artifacts`, then
    `POST /datasets/{task}/{id}/preprocess` carrying that `artifact_id`
+7. `POST /models/{model_id}/predict`, which saves a result
+8. `POST /results/{task}/{result_id}/analysis` on that result
 
 The records panel reads `GET .../prepared/{prepared_id}/{partition}` and
 `GET .../preprocessed/{preprocessed_id}`, and `Unload dataset` sends
@@ -88,6 +92,12 @@ Only the button has anyone left to report a failure to, so the other three go
 through `releaseDataset`, which swallows the outcome: a session that is already
 gone answers 404, which is what those paths wanted anyway. `pagehide` fires on a
 document that is going away, so that request carries `keepalive` to outlive it.
+
+**The automatic rows stop once a prediction has been saved.** Unloading a
+dataset deletes the results saved from it, so from the first saved prediction
+the workspace holds the session and only `Unload dataset` or a stage reset
+releases it — both of which say what they delete. Freeing that memory is then
+the user's decision, not something the console does on its way out of a page.
 
 Reload releases first and loads second, so two sessions are never resident at
 once — the malware source is large enough for that peak to be the point. The
@@ -134,6 +144,45 @@ Notes:
   and the session behind it is released rather than left behind. Deleting it is
   the console's job alone: the API has no expiry of its own.
 
+## Models and results in the pipeline
+
+There is no separate models or results page: everything a task needs is one
+flow, so nothing has to be done in another tab and come back.
+
+**Step 5, Model.** The packaged notebook baseline is the default. `GET
+/models/baselines` says which tasks have one installed and names it, and `Use
+baseline` registers it through `POST /models/baselines/{task}/load`. The first
+call reads and validates the bundle; a later one reuses the registration and
+says so. Uploading your own bundle is folded away under the step, because it is
+the exception. The chosen model is held by the workspace and used by both later
+steps, which is why phishing tokenization follows the selection automatically.
+
+A baseline is treated as borrowed rather than owned: the backend packages the
+bundle and memoizes its registration, so releasing it on the way out would only
+force the next session to read it again — 1.6 GB of it, for phishing. Uploads
+are owned and released, as `use-model-release.ts` describes.
+
+**Step 7, Predict** scores the partition and saves a result. **Step 8,
+Evaluate** analyses that result: `POST …/analysis` for metrics over the whole
+partition and, when asked, attributions for a seeded class-balanced sample. The
+saved analyses are listed so an earlier one can be reopened or deleted, and the
+result downloads as a ZIP.
+
+Class names in the summary, the tables and the charts come from the result's own
+output contract rather than the task catalog, so a contract change needs no
+frontend change.
+
+Charts are inline SVG rather than a charting dependency: a ROC or PR curve has
+two rate axes, so the domain is fixed at 0–1 and nothing needs scaling. A curve
+over a large partition carries a point per threshold, so it is strided down to
+400 points, keeping both endpoints. Attribution bars keep their sign, with the
+axis in the middle whenever any value is negative.
+
+Explanations are rendered per task, because each explains something different:
+standardized features for network intrusion, PE byte regions and windows for
+malware, and email tokens for phishing. Units are not comparable across tasks,
+so each section states its own target and baseline.
+
 ## Docker
 
 `src/deployment/compose.yml` runs both services:
@@ -176,3 +225,30 @@ loaded dataset and upstream results. Affected step forms and artifact selections
 reset, and the record browser returns to train. Pipeline actions, resets, and
 unload are mutually exclusive while a request is active. “Reset fractions” only
 restores the split form defaults; it does not clear server results.
+
+### Models in the task pipeline
+
+The Load model step sits between Prepare and Preprocess. Users can load a local
+notebook baseline, upload their own ZIP, or choose an already registered model
+without leaving the task. The selected model is shared by preprocessing and
+prediction; transformer tokenization automatically uses that model selection.
+Changing selection clears the current preprocessing/prediction view so it can be
+rebuilt for the new model. Saved results remain until the dataset is reset or
+unloaded.
+
+Models newly registered by the workspace are released when replaced/cleared,
+when the dataset is reloaded or explicitly unloaded, and on task/page exit.
+Previously registered library models are borrowed and remain registered. A model
+load/upload that finishes after leaving the page is also cleaned up if it created
+a registration. Baselines are borrowed, so they survive. The saved-result hold
+behaviour for datasets is unchanged: after scoring, the dataset stays loaded for
+the evaluate step until it is explicitly unloaded or a stage is reset.
+
+Nginx now accepts up to 16 GiB on `/api/`, matching the backend model ZIP limit,
+and streams request bodies instead of buffering whole uploads at the proxy.
+
+Preprocessing, prediction, and analysis use background job submission and one-second
+status polling for every cyber task. The pipeline displays phase/count progress,
+retries temporary polling disconnects, and provides cancellation. Leaving the step
+cancels active work; dataset reset/unload invalidates dependent jobs. An API restart
+ends in-memory jobs, so the UI asks the user to rerun an expired job.

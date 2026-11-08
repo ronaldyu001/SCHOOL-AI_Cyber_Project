@@ -18,12 +18,13 @@ def reset_stage(session, stage: ResetStage) -> None:
             session.artifact_bindings.clear()
 
 
-def add_reset_routes(router, get_session, cleanup=None, storage_lock=None):
+def add_reset_routes(router, get_session, cleanup=None, storage_lock=None, cancel_jobs=None):
     from threading import RLock
     storage_lock = storage_lock or RLock()
     @router.delete("/{dataset_id}/stages/{stage}", status_code=204)
     def reset_dataset_stage(dataset_id: str, stage: ResetStage) -> Response:
         session = get_session(dataset_id)
+        if cancel_jobs is not None: cancel_jobs(dataset_id)
         with storage_lock, session.lock:
             if cleanup is not None: cleanup(dataset_id, session, stage)
             reset_stage(session, stage)

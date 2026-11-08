@@ -83,37 +83,49 @@ class ModelRuntime:
             self.tokenizer(directory)
 
     def predict(self, model, directory, dataset):
+        from application.ports.progress import checkpoint, report_progress
+        import inspect
         torch = self._torch()
+        total = len(dataset.row_ids)
+        report_progress('loading_model', 0, total)
         network = self.load(model, directory)
+        checkpoint()
+        architecture = model.bundle.architecture
+        batch_size = {'malconv': 1, 'tabm': 1024, 'transformer': 4}[architecture]
+        if architecture == 'malconv':
+            if dataset.padding_token != model.bundle.config['padding_idx']:
+                raise ValueError("Model padding_idx must match the selected byte preprocessing")
+            if dataset.max_length < model.bundle.config['kernel_size']:
+                raise ValueError("Input length must accommodate the convolution kernel")
+        elif architecture == 'tabm':
+            if tuple(model.bundle.config['cat_cardinalities']) != dataset.category_cardinalities:
+                raise ValueError("Model cardinalities must match preprocessed categories")
+        else:
+            if dataset.candidate_labels != ("phishing email", "legitimate email"):
+                raise ValueError("Candidate order must follow the service phishing output contract")
+            if total and not dataset.input_ids:
+                raise ValueError("Tokenized candidate pairs are required")
         scores = []
+        report_progress('predicting', 0, total)
         with torch.inference_mode():
-            # Process one sample at a time to avoid constructing a second whole-partition tensor.
-            for i in range(len(dataset.row_ids)):
-                if model.bundle.architecture == 'malconv':
-                    if dataset.padding_token != model.bundle.config['padding_idx']:
-                        raise ValueError("Model padding_idx must match the selected byte preprocessing")
-                    if dataset.max_length < model.bundle.config['kernel_size']:
-                        raise ValueError("Input length must accommodate the convolution kernel")
-                    logits = network(torch.tensor([dataset.byte_tokens[i]], dtype=torch.long))
-                    probability = logits.sigmoid().item()
-                elif model.bundle.architecture == 'tabm':
-                    if tuple(model.bundle.config['cat_cardinalities']) != dataset.category_cardinalities:
-                        raise ValueError("Model cardinalities must match preprocessed categories")
-                    logits = network(torch.tensor([dataset.numeric[i]], dtype=torch.float32),
-                                     torch.tensor([dataset.categorical[i]], dtype=torch.long))
-                    probability = logits.softmax(-1).mean(1)[0, 1].item()
+            for start in range(0, total, batch_size):
+                checkpoint()
+                stop = min(start+batch_size, total)
+                if architecture == 'malconv':
+                    logits = network(torch.tensor(dataset.byte_tokens[start:stop], dtype=torch.long))
+                    probabilities = logits.reshape(-1).sigmoid()
+                elif architecture == 'tabm':
+                    logits = network(torch.tensor(dataset.numeric[start:stop], dtype=torch.float32),
+                                     torch.tensor(dataset.categorical[start:stop], dtype=torch.long))
+                    probabilities = logits.softmax(-1).mean(1)[:, 1]
                 else:
-                    if dataset.candidate_labels != ("phishing email", "legitimate email"):
-                        raise ValueError("Candidate order must follow the service phishing output contract")
-                    if not dataset.input_ids:
-                        raise ValueError("Tokenized candidate pairs are required")
-                    kwargs = dict(input_ids=torch.tensor(dataset.input_ids[i], dtype=torch.long),
-                                  attention_mask=torch.tensor(dataset.attention_mask[i], dtype=torch.long))
-                    # DistilBERT/BART do not take token_type_ids; BERT-like families do.
-                    import inspect
+                    ids = [pair for row in dataset.input_ids[start:stop] for pair in row]
+                    masks = [pair for row in dataset.attention_mask[start:stop] for pair in row]
+                    kwargs = dict(input_ids=torch.tensor(ids, dtype=torch.long), attention_mask=torch.tensor(masks, dtype=torch.long))
                     if dataset.token_type_ids and 'token_type_ids' in inspect.signature(network.forward).parameters:
-                        kwargs['token_type_ids'] = torch.tensor(dataset.token_type_ids[i], dtype=torch.long)
+                        kwargs['token_type_ids'] = torch.tensor([pair for row in dataset.token_type_ids[start:stop] for pair in row], dtype=torch.long)
                     logits = network(**kwargs).logits
-                    probability = logits[:, 2].softmax(dim=0)[0].item()
-                scores.append(float(probability))
+                    probabilities = logits[:, 2].reshape(stop-start, 2).softmax(-1)[:, 0]
+                scores.extend(float(p) for p in probabilities.tolist())
+                report_progress('predicting', stop, total)
         return scores

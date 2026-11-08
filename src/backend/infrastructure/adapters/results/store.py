@@ -9,12 +9,13 @@ from pathlib import Path
 import re
 import shutil
 import tempfile
-from threading import RLock
+from threading import RLock, Condition
 from uuid import uuid4
 from zipfile import ZipFile, ZIP_STORED
 import numpy as np
 from domain.entities.datasets.common import CyberTask
 from domain.entities.results import PredictionRows
+from application.ports.progress import checkpoint, report_progress
 
 class ResultNotFound(LookupError):
     pass
@@ -27,6 +28,7 @@ def write_json(path, value):
 def copy_snapshot(source, destination):
     destination.mkdir(parents=True, exist_ok=True)
     for path in source.rglob('*'):
+        checkpoint()
         if path.is_symlink() or not path.resolve().is_relative_to(source.resolve()):
             raise ValueError("Snapshot members must be ordinary local files")
         target = destination / path.relative_to(source)
@@ -44,6 +46,9 @@ class ResultStore:
     def __init__(self, root):
         self.root = Path(root)
         self.lock = RLock()
+        self.condition = Condition(self.lock)
+        self.readers = {}
+        self.deleting = set()
 
     def path(self, task, result_id=None):
         task = CyberTask(task).value
@@ -60,57 +65,78 @@ class ResultStore:
         with self.lock:
             root.mkdir(parents=True, exist_ok=True)
             temporary = Path(tempfile.mkdtemp(prefix='.pending-', dir=root))
-            try:
-                metadata = dict(schema_version=1, result_id=result_id, task=task,
-                    dataset_id=context['dataset_id'], preprocessed_id=context['preprocessed_id'],
-                    model_id=model.model_id, architecture=model.bundle.architecture,
-                    has_tokenizer=model.has_tokenizer, source=asdict(dataset.source),
-                    artifact_id=dataset.artifact_id, partition=dataset.partition,
-                    sample_count=len(rows.row_ids), created_at=datetime.now(timezone.utc).isoformat(),
-                    output_contract=prediction['output_contract'])
-                if hasattr(dataset, 'numeric_features'):
-                    metadata.update(numeric_features=list(dataset.numeric_features), categorical_features=list(dataset.categorical_features))
-                if hasattr(dataset, 'candidate_labels'):
-                    metadata['candidate_labels'] = list(dataset.candidate_labels)
-                write_json(temporary / 'metadata.json', metadata)
-                write_json(temporary / 'predictions.json', dict(row_ids=list(rows.row_ids), true_labels=list(rows.labels),
-                    positive_probabilities=list(rows.probabilities), predictions=prediction['predictions']))
-                copy_snapshot(directory, temporary / 'model')
-                artifact = context.get('artifact_directory')
-                if artifact is not None:
-                    copy_snapshot(Path(artifact), temporary / 'preprocessing')
-                with ZipFile(temporary / 'inputs.zip', 'w', ZIP_STORED, allowZip64=True) as archive:
-                    for i in range(len(rows.row_ids)):
-                        if model.bundle.architecture == 'tabm':
-                            arrays = dict(numeric=np.asarray(dataset.numeric[i], dtype=np.float32),
-                                          categorical=np.asarray(dataset.categorical[i], dtype=np.int64))
-                        elif model.bundle.architecture == 'malconv':
-                            arrays = dict(byte_tokens=np.asarray(dataset.byte_tokens[i], dtype=np.uint16),
-                                length=np.asarray(dataset.lengths[i]), padding_token=np.asarray(dataset.padding_token),
-                                byte_offset=np.asarray(dataset.byte_offset), sha256=np.asarray(dataset.hashes[i]))
-                        else:
-                            arrays = dict(input_ids=np.asarray(dataset.input_ids[i], dtype=np.int64),
-                                          attention_mask=np.asarray(dataset.attention_mask[i], dtype=np.uint8),
-                                          text=np.asarray(dataset.texts[i]))
-                            if dataset.token_type_ids:
-                                arrays['token_type_ids'] = np.asarray(dataset.token_type_ids[i], dtype=np.int64)
-                            if dataset.premise_masks:
-                                arrays['premise_masks'] = np.asarray(dataset.premise_masks[i], dtype=np.uint8)
-                        output = io.BytesIO()
-                        np.savez_compressed(output, **arrays)
-                        archive.writestr(f'{i:08d}.npz', output.getvalue())
+        try:
+            report_progress('saving_results', 0, len(rows.row_ids))
+            metadata = dict(schema_version=1, result_id=result_id, task=task,
+                dataset_id=context['dataset_id'], preprocessed_id=context['preprocessed_id'],
+                model_id=model.model_id, architecture=model.bundle.architecture,
+                has_tokenizer=model.has_tokenizer, source=asdict(dataset.source),
+                artifact_id=dataset.artifact_id, partition=dataset.partition,
+                sample_count=len(rows.row_ids), created_at=datetime.now(timezone.utc).isoformat(),
+                output_contract=prediction['output_contract'])
+            if hasattr(dataset, 'numeric_features'):
+                metadata.update(numeric_features=list(dataset.numeric_features), categorical_features=list(dataset.categorical_features))
+            if hasattr(dataset, 'candidate_labels'):
+                metadata['candidate_labels'] = list(dataset.candidate_labels)
+            write_json(temporary / 'metadata.json', metadata)
+            write_json(temporary / 'predictions.json', dict(row_ids=list(rows.row_ids), true_labels=list(rows.labels),
+                positive_probabilities=list(rows.probabilities), predictions=prediction['predictions']))
+            copy_snapshot(directory, temporary / 'model')
+            artifact = context.get('artifact_directory')
+            if artifact is not None:
+                copy_snapshot(Path(artifact), temporary / 'preprocessing')
+            with ZipFile(temporary / 'inputs.zip', 'w', ZIP_STORED, allowZip64=True) as archive:
+                for i in range(len(rows.row_ids)):
+                    report_progress('saving_results', i, len(rows.row_ids))
+                    if model.bundle.architecture == 'tabm':
+                        arrays = dict(numeric=np.asarray(dataset.numeric[i], dtype=np.float32),
+                                      categorical=np.asarray(dataset.categorical[i], dtype=np.int64))
+                    elif model.bundle.architecture == 'malconv':
+                        arrays = dict(byte_tokens=np.asarray(dataset.byte_tokens[i], dtype=np.uint16),
+                            length=np.asarray(dataset.lengths[i]), padding_token=np.asarray(dataset.padding_token),
+                            byte_offset=np.asarray(dataset.byte_offset), sha256=np.asarray(dataset.hashes[i]))
+                    else:
+                        arrays = dict(input_ids=np.asarray(dataset.input_ids[i], dtype=np.int64),
+                                      attention_mask=np.asarray(dataset.attention_mask[i], dtype=np.uint8),
+                                      text=np.asarray(dataset.texts[i]))
+                        if dataset.token_type_ids:
+                            arrays['token_type_ids'] = np.asarray(dataset.token_type_ids[i], dtype=np.int64)
+                        if dataset.premise_masks:
+                            arrays['premise_masks'] = np.asarray(dataset.premise_masks[i], dtype=np.uint8)
+                    output = io.BytesIO()
+                    np.savez_compressed(output, **arrays)
+                    archive.writestr(f'{i:08d}.npz', output.getvalue())
+            with self.lock:
+                checkpoint()
+                guard = context.get('commit_guard')
+                if guard is not None and not guard():
+                    raise ValueError('Dataset was reset or unloaded before prediction finished')
                 os.rename(temporary, root / result_id)
-            finally:
-                if temporary.exists(): shutil.rmtree(temporary)
+        finally:
+            if temporary.exists(): shutil.rmtree(temporary)
         return result_id
+
+    def metadata(self, task, result_id):
+        with self.lock:
+            directory = self.path(task, result_id)
+            if (CyberTask(task).value, result_id) in self.deleting or not (directory / 'metadata.json').is_file():
+                raise ResultNotFound("Result not found for this task")
+            return json.loads((directory / 'metadata.json').read_text())
 
     @contextmanager
     def borrow(self, task, result_id):
-        with self.lock:
+        key = (CyberTask(task).value, result_id)
+        with self.condition:
+            if key in self.deleting: raise ResultNotFound('Result is being deleted')
+            metadata = self.metadata(task, result_id)
             directory = self.path(task, result_id)
-            if not (directory / 'metadata.json').is_file():
-                raise ResultNotFound("Result not found for this task")
-            yield directory, json.loads((directory / 'metadata.json').read_text())
+            self.readers[key] = self.readers.get(key, 0)+1
+        try:
+            yield directory, metadata
+        finally:
+            with self.condition:
+                self.readers[key] -= 1
+                self.condition.notify_all()
 
     def rows(self, directory):
         return json.loads((directory / 'predictions.json').read_text())
@@ -126,8 +152,17 @@ class ResultStore:
             return [json.loads(p.read_text()) for p in sorted(root.glob('*/metadata.json')) if not p.parent.name.startswith('.')]
 
     def delete(self, task, result_id):
-        with self.borrow(task, result_id) as (directory, _):
-            shutil.rmtree(directory)
+        key = (CyberTask(task).value, result_id)
+        with self.condition:
+            directory = self.path(task, result_id)
+            if not directory.is_dir(): raise ResultNotFound('Result not found for this task')
+            self.deleting.add(key)
+            try:
+                while self.readers.get(key, 0): self.condition.wait()
+                shutil.rmtree(directory)
+            finally:
+                self.deleting.discard(key)
+                self.readers.pop(key, None)
 
     def clear(self, task, *, dataset_id=None, artifact_id=None):
         with self.lock:
@@ -143,7 +178,9 @@ class ResultStore:
         target.mkdir(exist_ok=True)
         temporary = target / ('.' + analysis_id)
         try:
+            checkpoint()
             write_json(temporary, payload)
+            checkpoint()
             os.replace(temporary, target / (analysis_id + '.json'))
         finally:
             temporary.unlink(missing_ok=True)

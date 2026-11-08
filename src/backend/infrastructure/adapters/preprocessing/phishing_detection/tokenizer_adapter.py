@@ -1,3 +1,4 @@
+from application.ports.progress import report_progress
 from application.ports.preprocessing.phishing_detection import PhishingDetectionPreprocessorPort
 from domain.entities.datasets.phishing_detection import PhishingDetectionPreprocessedDataset
 
@@ -8,7 +9,9 @@ class PhishingDetectionTokenizerPreprocessor(PhishingDetectionPreprocessorPort):
     def transform(self, source, partition):
         settings = self.artifacts.settings
         ids, masks, types, premise = [], [], [], []
-        for record in partition.records:
+        report_progress("preprocessing", 0, len(partition.records))
+        for index, record in enumerate(partition.records):
+            report_progress("preprocessing", index, len(partition.records))
             candidates = settings["candidate_labels"]
             pairs = self.tokenizer([record.text] * len(candidates),
                 [settings["hypothesis_template"].format(label) for label in candidates],
@@ -19,6 +22,7 @@ class PhishingDetectionTokenizerPreprocessor(PhishingDetectionPreprocessorPort):
             if "token_type_ids" in pairs:
                 types.append(tuple(tuple(row) for row in pairs["token_type_ids"]))
             masks.append(tuple(tuple(row) for row in pairs["attention_mask"]))
+        report_progress("preprocessing", len(partition.records), len(partition.records))
         return PhishingDetectionPreprocessedDataset(source, partition.row_ids,
             tuple(r.text for r in partition.records), partition.labels,
             tuple(ids), tuple(masks), tuple(settings["candidate_labels"]), token_type_ids=tuple(types), premise_masks=tuple(premise))

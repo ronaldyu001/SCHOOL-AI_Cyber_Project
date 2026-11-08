@@ -587,3 +587,65 @@ analysis or prediction rather than removing files while they are in use.
 bundles return 404, unsupported task names return 422, and invalid/cross-task
 bundles return 422. No task-specific duplicate loader or inference implementation
 is required.
+
+### Explain prediction outcomes
+
+The analysis request accepts an optional `outcome` filter for explanations:
+
+```json
+{
+  "explain": true,
+  "outcome": "false_positive",
+  "sample_count": 5,
+  "seed": 123
+}
+```
+
+Supported values are `true_positive`, `false_positive`, `false_negative`, and
+`true_negative`. Case-insensitive aliases `TP`, `FP`, `FN`, and `TN` also work;
+saved parameters normalize them to their full names. Group membership uses the
+saved service predictions: TP=(true 1, predicted 1), FP=(0,1), FN=(1,0), TN=(0,0).
+
+Filtered automatic sampling uses the requested seed and selects up to
+`sample_count` matching rows without replacement. Without an outcome filter,
+existing class-balanced sampling remains unchanged. If `row_ids` is also supplied,
+every selected ID must belong to the result and match the requested outcome;
+IDs are not silently dropped. Empty outcome groups, inconsistent row selections,
+invalid outcomes, or an outcome supplied without `explain=true` return 422 and do
+not save a partial analysis.
+
+Evaluation continues to cover the full saved partition. Its new `outcome_counts`
+field gives all four group sizes. `explanation_selection` records the canonical
+outcome, eligible/selected counts, selected row IDs, and group counts for frontend
+filter controls and graph captions. Each explained sample additionally includes
+`true_label`, `predicted_label`, `positive_probability`, and `outcome`.
+
+### Background progress and cancellation
+
+The frontend uses background jobs for all three cyber tasks. These requests return
+`202` immediately with a `job_id` instead of holding an HTTP connection throughout
+preprocessing, inference, or evaluation/explainability:
+
+- `POST /datasets/{task}/{dataset_id}/preprocess/jobs` — same body as `/preprocess`.
+- `POST /models/{model_id}/predict/jobs` — same body as `/predict`.
+- `POST /results/{task}/{result_id}/analysis/jobs` — same body as `/analysis`.
+- `GET /jobs/{job_id}` — status, phase, completed/total counts, percentage, error,
+  and a compact result reference after success.
+- `GET /jobs/{job_id}/result` — original operation response after success; `409`
+  while incomplete or unsuccessful.
+- `POST /jobs/{job_id}/cancel` — request cancellation (`202`).
+
+Poll status about once a second until `succeeded`, `failed`, or `cancelled`.
+`queued`, `running`, and `cancelling` are nonterminal. Progress is phase based,
+not a remaining-time estimate; model loading and individual explanation batches
+can take time between updates. Cancellation is checked between batches/records
+and explanation forward passes. A commit that finishes before cancellation may
+still succeed. Dataset reset/unload invalidates its jobs and prevents stale
+prediction commits; artifact/result deletion also cancels dependent jobs.
+
+One heavy job runs at a time, with at most 16 active/queued jobs. Identical active
+requests reuse their job. Finished payloads live in temporary files, with a bounded
+history of approximately 100 jobs. Jobs are local to one API process and are not
+resumed after restart (`404`); saved results/analyses still follow their existing
+storage lifecycle. Run a single API worker with this in-memory session architecture.
+The original synchronous endpoints remain available for existing API clients.

@@ -1,5 +1,5 @@
 /** Dataset pipeline for one task: load, clean, split, prepare, preprocess, browse. */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { resetDatasetStage, type ResetStage, unloadDataset } from '../../api/datasets';
 import type {
@@ -8,13 +8,18 @@ import type {
   PreprocessResponse,
   SourceResponse,
   SplitResponse,
+  UploadedModel,
 } from '../../api/types';
 import { Button, StatusNote } from '../../components/ui';
 import { findTask, type TaskDescriptor } from '../../tasks/catalog';
 import { NotFoundPage } from '../NotFoundPage';
 import { RecordExplorer, type RecordView } from './RecordExplorer';
 import { CleanStep } from './steps/CleanStep';
+import { useModelRelease } from './use-model-release';
+import { AnalysisStep } from './steps/AnalysisStep';
+import { ModelStep } from './steps/ModelStep';
 import { LoadStep } from './steps/LoadStep';
+import { PredictStep } from './steps/PredictStep';
 import { PrepareStep } from './steps/PrepareStep';
 import { PreprocessStep } from './steps/PreprocessStep';
 import { SplitStep } from './steps/SplitStep';
@@ -58,26 +63,54 @@ const EMPTY: Pipeline = {
 };
 
 function TaskWorkspace({ task, busy }: { task: TaskDescriptor; busy: boolean }) {
+  const modelRelease = useModelRelease();
+  const [model, setModel] = useState<UploadedModel | null>(null);
+  const selectedModel = useRef<UploadedModel | null>(null);
   const [pipeline, setPipeline] = useState<Pipeline>(EMPTY);
   const [revisions, setRevisions] = useState({ cleaned: 0, splits: 0, prepared: 0, preprocessed: 0 });
   const [view, setView] = useState<RecordView>('train');
   const [confirmUnload, setConfirmUnload] = useState(false);
+  // Set once this dataset has saved a prediction. Unloading would delete those
+  // results, so from then on the dataset is only released on purpose.
+  const [savedResults, setSavedResults] = useState(false);
+  // The result the predict step saved, which the evaluate step then analyses.
+  const [resultId, setResultId] = useState<string | null>(null);
   const { source, cleaned, split, prepared, preprocessed } = pipeline;
 
   // Leaving the workspace has to delete the session, not just drop the local
   // state: the backend keeps it until asked otherwise.
-  useSessionRelease(task.slug, source?.dataset_id ?? null);
+  useSessionRelease(task.slug, source?.dataset_id ?? null, savedResults);
 
   /** Takes up a dataset, or none, discarding everything the last one produced. */
   const adopt = (next: SourceResponse | null) => {
     setPipeline(next === null ? EMPTY : { ...EMPTY, source: next });
     setConfirmUnload(false);
+    setSavedResults(false);
+    setResultId(null);
     setView('train');
+  };
+
+  const selectModel = async (next: UploadedModel | null, owned = false) => {
+    if (next !== null && owned) modelRelease.track(next.model_id);
+    const previous = selectedModel.current;
+    if (previous?.model_id === next?.model_id) return;
+    if (previous !== null) await modelRelease.release(previous.model_id);
+    selectedModel.current = next;
+    setModel(next);
+    setPipeline((current) => ({ ...current, preprocessed: null }));
+    setView('train');
+  };
+
+  const releaseWorkspaceModels = async () => {
+    adopt(null);
+    await modelRelease.releaseAll();
+    selectedModel.current = null;
+    setModel(null);
   };
 
   const unload = useAction(async (datasetId: string) => {
     await unloadDataset(task.slug, datasetId);
-    adopt(null);
+    await releaseWorkspaceModels();
   });
 
   const reset = useAction(async (stage: ResetStage) => {
@@ -99,6 +132,8 @@ function TaskWorkspace({ task, busy }: { task: TaskDescriptor; busy: boolean }) 
     });
     setView('train');
     setConfirmUnload(false);
+    setSavedResults(false);
+    setResultId(null);
   });
 
   return (
@@ -117,7 +152,9 @@ function TaskWorkspace({ task, busy }: { task: TaskDescriptor; busy: boolean }) 
             <span className="work__session-label">Active dataset</span>
             <code className="work__session-id">{source.dataset_id}</code>
             <span className="work__session-note">
-              Held in the API&rsquo;s memory until you unload it, reload the dataset, or leave this page.
+              {savedResults
+                ? 'Kept while you have saved predictions from it. Unloading or resetting a stage deletes them.'
+                : 'Held in the API\u2019s memory until you unload it, reload the dataset, or leave this page.'}
             </span>
           </div>
           <div className="work__row">
@@ -152,7 +189,7 @@ function TaskWorkspace({ task, busy }: { task: TaskDescriptor; busy: boolean }) 
           <LoadStep
             task={task}
             source={source}
-            onReleased={() => adopt(null)}
+            onReleased={releaseWorkspaceModels}
             onLoaded={adopt}
           />
           <CleanStep
@@ -186,8 +223,10 @@ function TaskWorkspace({ task, busy }: { task: TaskDescriptor; busy: boolean }) 
               setView('train');
             }}
           />
+          <ModelStep key={source?.dataset_id ?? "no-dataset"} task={task} datasetId={source?.dataset_id ?? null} model={model} onSelect={selectModel} />
           <PreprocessStep
-            key={`${source?.dataset_id ?? "none"}:${prepared?.prepared_id ?? "none"}:${revisions.preprocessed}`}
+            model={model}
+            key={`${source?.dataset_id ?? "none"}:${prepared?.prepared_id ?? "none"}:${revisions.preprocessed}:${model?.model_id ?? "default"}`}
             onReset={prepared !== null ? () => void reset.run('preprocessed') : undefined}
             task={task}
             datasetId={source?.dataset_id ?? null}
@@ -197,6 +236,22 @@ function TaskWorkspace({ task, busy }: { task: TaskDescriptor; busy: boolean }) 
               setPipeline((current) => ({ ...current, preprocessed: next }));
               setView('preprocessed');
             }}
+          />
+          <PredictStep
+            model={model}
+            key={`${source?.dataset_id ?? 'none'}:predict:${preprocessed?.preprocessed_id ?? 'none'}:${model?.model_id ?? 'none'}`}
+            task={task}
+            datasetId={source?.dataset_id ?? null}
+            preprocessed={preprocessed}
+            onSaved={(saved) => {
+              setSavedResults(true);
+              setResultId(saved);
+            }}
+          />
+          <AnalysisStep
+            key={`${source?.dataset_id ?? 'none'}:evaluate:${resultId ?? 'none'}`}
+            task={task}
+            resultId={resultId}
           />
         </ol>
       </fieldset>

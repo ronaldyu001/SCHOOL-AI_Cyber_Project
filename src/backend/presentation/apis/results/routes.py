@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.background import BackgroundTask
 from starlette.responses import StreamingResponse
 from domain.entities.datasets.common import CyberTask
+from domain.entities.results import PredictionOutcome
 from application.use_cases.results.analyze import AnalyzeResult
 from infrastructure.adapters.results.store import ResultNotFound
 from presentation.apis.models.routes import model_errors
@@ -15,6 +16,7 @@ from presentation.apis.models.routes import model_errors
 class AnalysisRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
     explain: bool = False
+    outcome: PredictionOutcome | None = None
     row_ids: list[int] | None = Field(default=None, min_length=1, max_length=2000)
     sample_count: int = Field(default=4, ge=1, le=2000, strict=True)
     n_steps: int = Field(default=24, ge=2, le=512, strict=True)
@@ -32,7 +34,7 @@ def result_errors():
         raise HTTPException(404, str(error)) from error
 
 
-def create_router(store, evaluation, explanations):
+def create_router(store, evaluation, explanations, jobs=None):
     router = APIRouter(prefix='/results', tags=['results and analysis'])
 
     @router.get('/{task}')
@@ -41,6 +43,7 @@ def create_router(store, evaluation, explanations):
 
     @router.delete('/{task}', status_code=204)
     def clear_results(task: CyberTask):
+        if jobs is not None: jobs.invalidate(task=task.value, kind="analysis")
         store.clear(task)
         return Response(status_code=204)
 
@@ -53,13 +56,23 @@ def create_router(store, evaluation, explanations):
 
     @router.delete('/{task}/{result_id}', status_code=204)
     def delete(task: CyberTask, result_id: str):
+        if jobs is not None: jobs.invalidate(task=task.value, result_id=result_id)
         with result_errors(): store.delete(task, result_id)
         return Response(status_code=204)
 
     @router.post('/{task}/{result_id}/analysis', status_code=201)
     def analyze(task: CyberTask, result_id: str, body: AnalysisRequest):
         with result_errors():
-            return AnalyzeResult(store, evaluation, explanations).execute(task.value, result_id, body.model_dump())
+            return AnalyzeResult(store, evaluation, explanations).execute(task.value, result_id, body.model_dump(mode="json"))
+
+    @router.post('/{task}/{result_id}/analysis/jobs', status_code=202)
+    def start_analysis(task: CyberTask, result_id: str, body: AnalysisRequest):
+        if jobs is None: raise HTTPException(503, 'Job service is not configured')
+        with result_errors():
+            metadata = store.metadata(task, result_id)
+            return jobs.submit('analysis', dict(task=task.value, result_id=result_id,
+                dataset_id=metadata.get('dataset_id'), artifact_id=metadata.get('artifact_id')),
+                ('analysis', task.value, result_id, body.model_dump_json()), lambda: analyze(task, result_id, body))
 
     @router.get('/{task}/{result_id}/analysis')
     def list_analysis(task: CyberTask, result_id: str):

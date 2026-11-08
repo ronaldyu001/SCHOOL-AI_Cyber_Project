@@ -1,5 +1,6 @@
 """Notebook Captum analyses, returned as numeric plotting data rather than figures."""
 import inspect
+from application.ports.progress import checkpoint, report_progress
 import numpy as np
 from domain.entities.models import ModelBundle, UploadedModel
 
@@ -11,7 +12,9 @@ class CaptumExplanations:
         import torch
         bundle = ModelBundle((directory / 'model/manifest.json').read_text())
         model = UploadedModel(metadata['model_id'], bundle, metadata['has_tokenizer'])
+        report_progress("loading_explainer", 0, len(samples))
         network = self.runtime.load(model, directory / 'model')
+        checkpoint()
         network.eval()
         # No torch.inference_mode here: attribution requires gradients through the model.
         with torch.enable_grad():
@@ -32,10 +35,12 @@ class CaptumExplanations:
         numeric_names = metadata['numeric_features']
         categorical_names = metadata['categorical_features']
         def probability(x, cat):
+            checkpoint()
             return network(x, cat).softmax(-1).mean(1)[:, 1]
         explanations = []
         all_attrs = []
-        for row_id, index, sample in samples:
+        for ordinal, (row_id, index, sample) in enumerate(samples):
+            report_progress("explaining_samples", ordinal, len(samples))
             x = torch.tensor(sample['numeric'][None], dtype=torch.float32)
             cat = torch.tensor(sample['categorical'][None], dtype=torch.long)
             attr, delta = IntegratedGradients(probability).attribute(x, baselines=torch.zeros_like(x),
@@ -55,6 +60,7 @@ class CaptumExplanations:
             targets = torch.tensor([rows['true_labels'][i] for _, i, _ in samples], dtype=torch.long)
             n_num = len(numeric_names)
             def true_probability(x, labels):
+                checkpoint()
                 predictions = network(x[:, :n_num], x[:, n_num:].round().long()).softmax(-1).mean(1)
                 return predictions.gather(1, labels[:, None]).squeeze(1)
             x_all = torch.cat([x_num, x_cat.float()], dim=1)
@@ -62,6 +68,7 @@ class CaptumExplanations:
             # Preserve process RNG state, and make repeated analyses reproducible.
             with torch.random.fork_rng(devices=[]):
                 for repeat in range(options['n_repeats']):
+                    report_progress('feature_permutation', repeat, options['n_repeats'])
                     torch.manual_seed(options['seed'] + repeat)
                     attr = FeaturePermutation(true_probability).attribute(x_all, additional_forward_args=(targets,))
                     runs.append(attr.detach().mean(0).numpy())
@@ -70,6 +77,7 @@ class CaptumExplanations:
                 feature_types=['numeric'] * len(numeric_names) + ['categorical'] * len(categorical_names),
                 importance=runs.mean(0).tolist(), std=runs.std(0).tolist(), repeats=options['n_repeats'],
                 target='true_class_probability_drop')
+        report_progress('explaining_samples', len(samples), len(samples))
         return dict(method='integrated_gradients', target='attack_probability', baseline='zero standardized numeric features; categorical IDs held fixed',
             feature_names=numeric_names, samples=explanations,
             global_importance=dict(features=numeric_names, mean_absolute_attribution=np.abs(all_attrs).mean(0).tolist()),
@@ -78,10 +86,13 @@ class CaptumExplanations:
     def _malconv(self, network, samples, options, config):
         import torch
         from captum.attr import LayerIntegratedGradients
-        def logit(tokens): return network(tokens).reshape(-1)
+        def logit(tokens):
+            checkpoint()
+            return network(tokens).reshape(-1)
         method = LayerIntegratedGradients(logit, network.embedding_1)
         explanations = []
-        for row_id, _, sample in samples:
+        for ordinal, (row_id, _, sample) in enumerate(samples):
+            report_progress("explaining_samples", ordinal, len(samples))
             ids = torch.tensor(sample['byte_tokens'].astype(np.int64)[None], dtype=torch.long)
             padding = int(sample['padding_token'])
             baseline_ids = torch.full_like(ids, padding)
@@ -105,6 +116,7 @@ class CaptumExplanations:
                 top_bytes=[dict(offset=int(i), attribution=float(scores[i])) for i in top])
             if options['include_byte_attributions']: result['byte_attributions'] = scores.tolist()
             explanations.append(result)
+        report_progress('explaining_samples', len(samples), len(samples))
         return dict(method='layer_integrated_gradients', target='malware_logit', baseline='all padding tokens', samples=explanations)
 
     def _pe_regions(self, raw, size):
@@ -141,7 +153,8 @@ class CaptumExplanations:
         from captum.attr import IntegratedGradients
         embedding = network.get_input_embeddings()
         explanations, token_totals = [], {}
-        for row_id, _, sample in samples:
+        for ordinal, (row_id, _, sample) in enumerate(samples):
+            report_progress("explaining_samples", ordinal, len(samples))
             ids = [torch.tensor(pair[None], dtype=torch.long) for pair in sample['input_ids']]
             masks = [torch.tensor(pair[None], dtype=torch.long) for pair in sample['attention_mask']]
             premise = sample.get('premise_masks')
@@ -162,6 +175,7 @@ class CaptumExplanations:
                 base[:, select] = padding[:, select]
                 baselines.append(base)
             def forward(*values):
+                checkpoint()
                 logits = []
                 for i, full in enumerate(values):
                     batch = len(full)
@@ -218,6 +232,7 @@ class CaptumExplanations:
         importance = [dict(token=token, mean_attribution=v[0]/v[2], mean_absolute_attribution=v[1]/v[2], count=v[2])
                       for token, v in token_totals.items()]
         importance.sort(key=lambda item: item['mean_absolute_attribution'], reverse=True)
+        report_progress('explaining_samples', len(samples), len(samples))
         return dict(method='integrated_gradients', target='phishing_entailment_margin',
             baseline='padding embeddings for email tokens; special tokens and hypotheses held fixed',
             samples=explanations, global_token_importance=importance)

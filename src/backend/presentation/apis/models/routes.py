@@ -10,6 +10,7 @@ from starlette.responses import StreamingResponse
 from starlette.background import BackgroundTask
 from safetensors import SafetensorError
 from application.use_cases.models import ImportModel, PredictModel
+from application.ports.progress import OperationCancelled
 from domain.entities.models import FAMILIES, OUTPUT_CONTRACTS
 from domain.entities.datasets.common import CyberTask
 from infrastructure.adapters.models.baselines import BaselineUnavailable
@@ -22,6 +23,8 @@ from infrastructure.adapters.preprocessing.artifact_store import ArtifactUnavail
 def model_errors():
     try:
         yield
+    except OperationCancelled:
+        raise
     except (ModelNotFound, BaselineUnavailable) as error:
         raise HTTPException(404, str(error)) from error
     except (ModelRuntimeUnavailable, ArtifactUnavailable, ImportError) as error:
@@ -41,12 +44,13 @@ class PredictRequest(BaseModel):
     preprocessed_id: str = Field(min_length=1)
 
 
-def create_router(store, runtime, dataset_sessions, results=None, artifacts=None, storage_lock=None, baseline_catalog=None, baseline_loader=None):
+def create_router(store, runtime, dataset_sessions, results=None, artifacts=None, storage_lock=None, baseline_catalog=None, baseline_loader=None, jobs=None):
     @asynccontextmanager
     async def lifespan(app):
         try:
             yield
         finally:
+            if jobs is not None: jobs.close()
             store.close()
 
     storage_lock = storage_lock or RLock()
@@ -103,6 +107,7 @@ def create_router(store, runtime, dataset_sessions, results=None, artifacts=None
 
     @router.delete('/{model_id}', status_code=204)
     def delete(model_id: str):
+        if jobs is not None: jobs.cancel_matching(kind="prediction", model_id=model_id)
         with model_errors():
             store.delete(model_id)
         return Response(status_code=204)
@@ -148,6 +153,20 @@ def create_router(store, runtime, dataset_sessions, results=None, artifacts=None
                     adapter = artifacts[dataset.source.task.value]
                     adapter.load(dataset.artifact_id)
                     context['artifact_directory'] = adapter.path(dataset.artifact_id)
-                return PredictModel(store, runtime, results).execute(model_id, dataset, context)
+                context['commit_guard'] = lambda: sessions.get(body.dataset_id) is session and session.preprocessed.get(body.preprocessed_id) is dataset
+            return PredictModel(store, runtime, results).execute(model_id, dataset, context)
+
+    @router.post('/{model_id}/predict/jobs', status_code=202)
+    def start_prediction(model_id: str, body: PredictRequest):
+        if jobs is None: raise HTTPException(503, 'Job service is not configured')
+        model = next((m for m in store.list() if m.model_id == model_id), None)
+        if model is None: raise HTTPException(404, 'Model not found')
+        session = dataset_sessions[model.bundle.task.value].get(body.dataset_id)
+        data = session.preprocessed.get(body.preprocessed_id) if session is not None else None
+        if data is None: raise HTTPException(404, 'Preprocessed result not found for this dataset')
+        with model_errors():
+            return jobs.submit('prediction', dict(task=model.bundle.task.value, model_id=model_id,
+                dataset_id=body.dataset_id, preprocessed_id=body.preprocessed_id, artifact_id=data.artifact_id),
+                ('prediction', model_id, body.dataset_id, body.preprocessed_id), lambda: predict(model_id, body))
 
     return router

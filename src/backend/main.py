@@ -14,6 +14,8 @@ from infrastructure.adapters.results.lifecycle import StorageLifecycle
 from presentation.apis.results.routes import create_router as results_router
 from presentation.apis.results.artifacts import create_router as stored_artifacts_router
 from functools import partial
+from infrastructure.adapters.jobs import JobRunner
+from presentation.apis.jobs import create_router as jobs_router
 from pathlib import Path
 from fastapi import FastAPI
 from application.ports.preprocessing.malware_detection import MalwareDetectionPreprocessorPort
@@ -40,6 +42,8 @@ def create_app(data_root: Path | None = None, network_preprocessor: NetworkIntru
     app.state.phishing_detection_datasets = {}
     app.state.malware_detection_datasets = {}
     results_root = Path(results_root) if results_root is not None else Path(__file__).resolve().parent / ".results"
+    jobs = JobRunner()
+    app.state.jobs = jobs
     results = ResultStore(results_root)
     app.state.result_store = results
     artifacts = {
@@ -53,25 +57,29 @@ def create_app(data_root: Path | None = None, network_preprocessor: NetworkIntru
         "malware_detection": app.state.malware_detection_datasets,
         "phishing_detection": app.state.phishing_detection_datasets,
     }
-    lifecycle = StorageLifecycle(results, artifacts, sessions)
+    lifecycle = StorageLifecycle(results, artifacts, sessions, jobs)
     app.state.storage_lifecycle = lifecycle
     app.include_router(network_router(root, network_preprocessor, sessions['network_intrusion'],
         artifact_adapter=None if network_preprocessor else artifacts['network_intrusion'],
         cleanup=partial(lifecycle.cleanup, 'network_intrusion'), storage_lock=results.lock,
-        delete_artifact=partial(lifecycle.delete_artifact, 'network_intrusion')))
+        delete_artifact=partial(lifecycle.delete_artifact, 'network_intrusion'), jobs=jobs,
+        cancel_jobs=lambda dataset_id, task='network_intrusion': jobs.invalidate(task=task, dataset_id=dataset_id)))
     app.include_router(phishing_router(root, sessions['phishing_detection'], artifact_adapter=artifacts['phishing_detection'],
         model_store=app.state.model_store, model_runtime=app.state.model_runtime,
         cleanup=partial(lifecycle.cleanup, 'phishing_detection'), storage_lock=results.lock,
-        delete_artifact=partial(lifecycle.delete_artifact, 'phishing_detection')))
+        delete_artifact=partial(lifecycle.delete_artifact, 'phishing_detection'), jobs=jobs,
+        cancel_jobs=lambda dataset_id, task='phishing_detection': jobs.invalidate(task=task, dataset_id=dataset_id)))
     app.include_router(malware_router(root, malware_preprocessor, sessions['malware_detection'],
         artifact_adapter=None if malware_preprocessor else artifacts['malware_detection'],
         cleanup=partial(lifecycle.cleanup, 'malware_detection'), storage_lock=results.lock,
-        delete_artifact=partial(lifecycle.delete_artifact, 'malware_detection')))
+        delete_artifact=partial(lifecycle.delete_artifact, 'malware_detection'), jobs=jobs,
+        cancel_jobs=lambda dataset_id, task='malware_detection': jobs.invalidate(task=task, dataset_id=dataset_id)))
     app.include_router(models_router(app.state.model_store, app.state.model_runtime, sessions,
         results=results, artifacts=artifacts, storage_lock=results.lock,
-        baseline_catalog=catalog, baseline_loader=baseline_loader))
-    app.include_router(results_router(results, ClassificationEvaluation(), CaptumExplanations(app.state.model_runtime)))
+        baseline_catalog=catalog, baseline_loader=baseline_loader, jobs=jobs))
+    app.include_router(results_router(results, ClassificationEvaluation(), CaptumExplanations(app.state.model_runtime), jobs=jobs))
     app.include_router(stored_artifacts_router(artifacts, sessions, lifecycle))
+    app.include_router(jobs_router(jobs))
     return app
 
 

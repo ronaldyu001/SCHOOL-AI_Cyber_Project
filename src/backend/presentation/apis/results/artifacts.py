@@ -27,12 +27,14 @@ def create_router(adapters, sessions, lifecycle):
 
     @router.delete('/{task}/{artifact_id}', status_code=204)
     def delete(task: CyberTask, artifact_id: str):
+        if lifecycle.jobs is not None: lifecycle.jobs.invalidate(task=task.value, artifact_id=artifact_id)
         with lifecycle.lock, artifact_errors():
             lifecycle.delete_artifact(task.value, artifact_id)
         return Response(status_code=204)
 
     @router.delete('/{task}', status_code=204)
     def clear(task: CyberTask):
+        if lifecycle.jobs is not None: lifecycle.jobs.invalidate(task=task.value)
         with lifecycle.lock, artifact_errors():
             for item in adapters[task.value].list():
                 lifecycle.delete_artifact(task.value, item['artifact_id'])

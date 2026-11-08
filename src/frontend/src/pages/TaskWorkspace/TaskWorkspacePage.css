@@ -125,6 +125,122 @@
   color: var(--text-muted);
 }
 
+/* Upload stays folded away, since the baseline is the usual choice. */
+.work__upload {
+  font-size: var(--text-sm);
+}
+
+.work__upload summary {
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.work__upload summary:hover {
+  color: var(--text);
+}
+
+.work__upload-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+}
+
+.work__file {
+  flex: 1 1 16rem;
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+/* The explain toggle takes its own line above the fields it reveals. */
+.work__analysis-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.work__check {
+  display: flex;
+  flex: 1 0 100%;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.work__analyses {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.work__analysis-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.work__analysis-id {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+/* Predictions: one page of scored rows, scrolling rather than widening the step. */
+.work__scores-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.work__scores {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.work__scores th,
+.work__scores td {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+
+.work__scores thead th {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background: var(--surface-raised);
+}
+
+.work__scores tbody tr:last-child th,
+.work__scores tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.work__scores tbody th {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.work__numeric {
+  text-align: right;
+}
+
 /* Stage export: the partition select, where a stage has one, beside the link. */
 .work__export {
   display: flex;
@@ -168,3 +284,6 @@
 .step__reset {
   margin-top: 1rem;
 }
+
+.work__job { margin-block: 1rem; }
+.work__job progress { width: 100%; height: 0.6rem; accent-color: var(--accent, #8db9d9); }

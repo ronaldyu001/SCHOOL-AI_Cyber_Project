@@ -40,10 +40,17 @@ interface RequestOptions {
   signal?: AbortSignal;
   /** Lets the request outlive the document, for an unload sent on `pagehide`. */
   keepalive?: boolean;
+  /**
+   * Sends `body` as it is under this content type instead of as JSON. Model
+   * uploads need it: the route wants the ZIP itself, not a multipart form, and
+   * a `File` picked off disk carries whatever type the OS guessed.
+   */
+  contentType?: string;
 }
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, signal, keepalive } = options;
+  const { method = 'GET', body, signal, keepalive, contentType } = options;
+  const raw = contentType !== undefined;
 
   let response: Response;
   try {
@@ -51,8 +58,8 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
       method,
       signal,
       keepalive,
-      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      headers: body === undefined ? undefined : { 'Content-Type': raw ? contentType : 'application/json' },
+      body: body === undefined ? undefined : raw ? (body as BodyInit) : JSON.stringify(body),
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;

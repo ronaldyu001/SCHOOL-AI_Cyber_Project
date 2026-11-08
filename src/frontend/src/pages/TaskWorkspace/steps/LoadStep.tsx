@@ -11,7 +11,7 @@ interface LoadStepProps {
   task: TaskDescriptor;
   source: SourceResponse | null;
   /** The current session has been dropped; nothing is loaded yet. */
-  onReleased: () => void;
+  onReleased: () => void | Promise<void>;
   onLoaded: (source: SourceResponse) => void;
 }
 
@@ -31,7 +31,7 @@ export function LoadStep({ task, source, onReleased, onLoaded }: LoadStepProps) 
       // peak is the whole point. The local results go with it, so a reload that
       // then fails leaves nothing loaded instead of a dead dataset id on screen.
       await releaseDataset(task.slug, source.dataset_id);
-      onReleased();
+      await onReleased();
     }
     const next = await loadDataset(task.slug);
     if (!mounted.current) {

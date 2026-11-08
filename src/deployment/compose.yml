@@ -6,6 +6,7 @@ services:
       target: runtime
     volumes:
       - preprocessing-artifacts:/app/.artifacts
+      - analysis-results:/app/.results
     # Reached only through the frontend's /api proxy, so no published port.
     expose:
       - "8000"
@@ -29,3 +30,4 @@ services:
 
 volumes:
   preprocessing-artifacts:
+  analysis-results:

@@ -38,10 +38,14 @@ export const prepareDataset = (slug: TaskSlug, datasetId: string, splitId: strin
     body: { split_id: splitId },
   });
 
-export const preprocessDataset = (slug: TaskSlug, datasetId: string, preparedId: string, artifactId?: string, partition: Partition = 'eval') =>
+/**
+ * `modelId` tokenizes with the model's own tokenizer instead of the artifact's.
+ * Only phishing accepts it; the other two routers answer 422.
+ */
+export const preprocessDataset = (slug: TaskSlug, datasetId: string, preparedId: string, artifactId?: string, partition: Partition = 'eval', modelId?: string) =>
   request<PreprocessResponse>(`${root(slug)}/${datasetId}/preprocess`, {
     method: 'POST',
-    body: { prepared_id: preparedId, artifact_id: artifactId, partition },
+    body: { prepared_id: preparedId, artifact_id: artifactId, model_id: modelId, partition },
   });
 
 export const fetchPreparedRecords = (
@@ -93,9 +97,10 @@ export const releaseDataset = async (slug: TaskSlug, datasetId: string) => {
   }
 };
 
-export const createPreprocessingArtifact = (slug: TaskSlug, datasetId: string, preparedId: string, settings: Record<string, unknown> = {}) =>
+/** With `modelId`, a phishing artifact packages that model's tokenizer, if it ships one. */
+export const createPreprocessingArtifact = (slug: TaskSlug, datasetId: string, preparedId: string, settings: Record<string, unknown> = {}, modelId?: string) =>
   request<PreprocessingArtifact>(`${root(slug)}/${datasetId}/artifacts`, {
-    method: 'POST', body: { prepared_id: preparedId, settings },
+    method: 'POST', body: { prepared_id: preparedId, model_id: modelId, settings },
   });
 
 export const inspectPreprocessingArtifact = (slug: TaskSlug, datasetId: string, artifactId: string) =>
@@ -135,3 +140,8 @@ export const datasetDownloadUrl = (
 export type ResetStage = 'cleaned' | 'splits' | 'prepared' | 'preprocessed';
 export const resetDatasetStage = (slug: TaskSlug, datasetId: string, stage: ResetStage) =>
   request<void>(`${root(slug)}/${datasetId}/stages/${stage}`, { method: 'DELETE' });
+
+export const startPreprocessing = (slug: TaskSlug, datasetId: string, preparedId: string, artifactId: string, partition: import('./types').Partition, modelId?: string) =>
+  request<import('./jobs').JobStatus>(`${root(slug)}/${datasetId}/preprocess/jobs`, {
+    method: 'POST', body: { prepared_id: preparedId, artifact_id: artifactId, partition, model_id: modelId },
+  });

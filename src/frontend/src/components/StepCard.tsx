@@ -47,7 +47,10 @@ export function StepCard({ step, title, description, state, lockedHint, children
         {onReset === undefined ? null : (
           <div className="step__reset">
             <Button onClick={onReset}>Reset {title.toLowerCase()}</Button>
-            <p className="work__hint">Clears this stage and later results. Earlier data stays available.</p>
+            <p className="work__hint">
+              Clears this stage and later results, along with every prediction saved from this
+              dataset. Earlier data stays available.
+            </p>
           </div>
         )}
       </div>

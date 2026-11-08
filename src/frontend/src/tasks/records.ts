@@ -32,6 +32,13 @@ const NAMED: Record<string, { label: string; kind: CellKind }> = {
   size_bytes: { label: 'Size (bytes)', kind: 'number' },
   length: { label: 'Bytes kept', kind: 'number' },
   byte_tokens: { label: 'Byte tokens', kind: 'bytes' },
+  // Tokenized phishing output. Each is one list per candidate pair, so they
+  // read as long rows; naming them at least says which is which.
+  input_ids: { label: 'Input IDs', kind: 'text' },
+  attention_mask: { label: 'Attention mask', kind: 'text' },
+  token_type_ids: { label: 'Token type IDs', kind: 'text' },
+  candidate_labels: { label: 'Candidates', kind: 'text' },
+  token_length: { label: 'Tokens', kind: 'number' },
 };
 
 /**

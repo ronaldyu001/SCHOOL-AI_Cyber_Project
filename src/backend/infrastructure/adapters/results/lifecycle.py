@@ -1,10 +1,12 @@
 """One lock order for active dataset state, persistent artifacts and results."""
 class StorageLifecycle:
-    def __init__(self, results, artifacts, sessions):
+    def __init__(self, results, artifacts, sessions, jobs=None):
         self.results, self.artifacts, self.sessions = results, artifacts, sessions
         self.lock = results.lock
+        self.jobs = jobs
 
     def cleanup(self, task, dataset_id, session, stage=None):
+        if self.jobs is not None: self.jobs.invalidate(task=task, dataset_id=dataset_id)
         # Called under the storage lock then the dataset lock.
         self.results.clear(task, dataset_id=dataset_id)
         candidates = set().union(*session.artifact_bindings.values()) if session.artifact_bindings else set()
@@ -18,6 +20,7 @@ class StorageLifecycle:
                 pass
 
     def delete_artifact(self, task, artifact_id):
+        if self.jobs is not None: self.jobs.invalidate(task=task, artifact_id=artifact_id)
         self.artifacts[task].delete(artifact_id)
         self.results.clear(task, artifact_id=artifact_id)
         for session in self.sessions[task].values():

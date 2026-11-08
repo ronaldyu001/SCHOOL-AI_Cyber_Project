@@ -42,7 +42,7 @@ class DatasetSession:
     lock: RLock = field(default_factory=RLock)
 
 
-def create_router(data_root: Path, preprocessor: NetworkIntrusionPreprocessorPort | None = None, sessions: dict[str, DatasetSession] | None = None, artifact_adapter=None, cleanup=None, storage_lock=None, delete_artifact=None) -> APIRouter:
+def create_router(data_root: Path, preprocessor: NetworkIntrusionPreprocessorPort | None = None, sessions: dict[str, DatasetSession] | None = None, artifact_adapter=None, cleanup=None, storage_lock=None, delete_artifact=None, jobs=None, cancel_jobs=None) -> APIRouter:
     storage_lock = storage_lock or RLock()
     router = APIRouter(prefix="/datasets/network_intrusion", tags=["network_intrusion datasets"])
     # Per-application memory, like the reference repo. No dataset reads at startup.
@@ -135,6 +135,8 @@ def create_router(data_root: Path, preprocessor: NetworkIntrusionPreprocessorPor
                     raise HTTPException(409, "Create and select preprocessing artifacts first")
             transformed = PreprocessNetworkIntrusionDataset(selected_preprocessor).execute(prepared, body.partition)
             transformed = replace(transformed, artifact_id=body.artifact_id, partition=body.partition)
+            from application.ports.progress import checkpoint
+            checkpoint()
             preprocessed_id = str(uuid4())
             session.preprocessed[preprocessed_id] = transformed
             return PreprocessResponse(dataset_id=dataset_id, prepared_id=body.prepared_id,
@@ -156,12 +158,23 @@ def create_router(data_root: Path, preprocessor: NetworkIntrusionPreprocessorPor
     @router.delete("/{dataset_id}", status_code=204)
     def unload_dataset(dataset_id: str) -> Response:
         session = get_session(dataset_id)
+        if cancel_jobs is not None: cancel_jobs(dataset_id)
         with storage_lock, session.lock:
             if cleanup is not None: cleanup(dataset_id, session)
             sessions.pop(dataset_id, None)
         return Response(status_code=204)
 
-    add_reset_routes(router, get_session, cleanup, storage_lock)
+    @router.post("/{dataset_id}/preprocess/jobs", status_code=202)
+    def start_preprocessing(dataset_id: str, body: PreprocessRequest):
+        if jobs is None: raise HTTPException(503, "Job service is not configured")
+        session = get_session(dataset_id)
+        if body.prepared_id not in session.prepared: raise HTTPException(404, "Prepared dataset not found")
+        with dataset_errors():
+            return jobs.submit('preprocessing', dict(task='network_intrusion', dataset_id=dataset_id,
+                model_id=body.model_id, artifact_id=body.artifact_id),
+                ('preprocessing', 'network_intrusion', dataset_id, body.model_dump_json()), lambda: preprocess_dataset(dataset_id, body))
+
+    add_reset_routes(router, get_session, cleanup, storage_lock, cancel_jobs)
     add_download_routes(router, get_session, ExportNetworkIntrusionDataset(NetworkIntrusionZIPExporter()))
     add_artifact_routes(router, get_session, artifact_adapter, storage_lock=storage_lock, delete_artifact=delete_artifact)
     return router
