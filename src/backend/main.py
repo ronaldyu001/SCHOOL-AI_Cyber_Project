@@ -3,6 +3,8 @@ from infrastructure.adapters.preprocessing.network_intrusion.artifacts import Ne
 from infrastructure.adapters.preprocessing.malware_detection.artifacts import MalwareDetectionArtifactAdapter
 from infrastructure.adapters.preprocessing.phishing_detection.artifacts import PhishingDetectionArtifactAdapter
 from infrastructure.adapters.models.store import ModelBundleStore
+from infrastructure.adapters.models.baselines import FileBaselineCatalog
+from application.use_cases.models.baselines import LoadBaselineModel
 from infrastructure.adapters.models.runtime import ModelRuntime
 from presentation.apis.models.routes import create_router as models_router
 from infrastructure.adapters.results.store import ResultStore
@@ -23,12 +25,16 @@ from presentation.apis.datasets.phishing_detection import create_router as phish
 
 def create_app(data_root: Path | None = None, network_preprocessor: NetworkIntrusionPreprocessorPort | None = None,
                malware_preprocessor: MalwareDetectionPreprocessorPort | None = None,
-               artifact_root: Path | None = None, phishing_artifact_adapter=None, results_root: Path | None = None) -> FastAPI:
+               artifact_root: Path | None = None, phishing_artifact_adapter=None, results_root: Path | None = None, baseline_root: Path | None = None) -> FastAPI:
     app = FastAPI(title="AI Cybersecurity Dataset API")
     root = Path(data_root) if data_root is not None else Path(__file__).resolve().parent / ".data"
     artifact_root = Path(artifact_root) if artifact_root is not None else Path(__file__).resolve().parent / ".artifacts"
     app.state.model_store = ModelBundleStore()
     app.state.model_runtime = ModelRuntime()
+    catalog = FileBaselineCatalog(Path(baseline_root) if baseline_root is not None else Path(__file__).resolve().parent / ".models")
+    baseline_loader = LoadBaselineModel(catalog, app.state.model_store, app.state.model_runtime)
+    app.state.baseline_catalog = catalog
+    app.state.baseline_loader = baseline_loader
     app.state.preprocessing_artifact_root = artifact_root
     app.state.network_intrusion_datasets = {}
     app.state.phishing_detection_datasets = {}
@@ -62,7 +68,8 @@ def create_app(data_root: Path | None = None, network_preprocessor: NetworkIntru
         cleanup=partial(lifecycle.cleanup, 'malware_detection'), storage_lock=results.lock,
         delete_artifact=partial(lifecycle.delete_artifact, 'malware_detection')))
     app.include_router(models_router(app.state.model_store, app.state.model_runtime, sessions,
-        results=results, artifacts=artifacts, storage_lock=results.lock))
+        results=results, artifacts=artifacts, storage_lock=results.lock,
+        baseline_catalog=catalog, baseline_loader=baseline_loader))
     app.include_router(results_router(results, ClassificationEvaluation(), CaptumExplanations(app.state.model_runtime)))
     app.include_router(stored_artifacts_router(artifacts, sessions, lifecycle))
     return app

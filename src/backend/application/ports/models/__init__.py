@@ -1,1 +1,1 @@
-from .repository import ModelRepositoryPort, ModelRuntimePort
+from .repository import ModelRepositoryPort, ModelRuntimePort, BaselineCatalogPort

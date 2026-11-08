@@ -570,3 +570,20 @@ or uploaded model. Result snapshots survive API restarts until explicitly remove
 after restart, use task-scoped result/artifact delete routes to remove unbound data.
 Storage operations use a consistent lock order so deletion waits for an in-flight
 analysis or prediction rather than removing files while they are in use.
+
+## Loading local baselines
+
+- `GET /models/baselines` calls `ListBaselineModels` through `BaselineCatalogPort`
+  and `FileBaselineCatalog`. It lists each task, architecture, name, availability
+  and an optional unavailable reason without loading model weights.
+- `POST /models/baselines/{task}/load` calls `LoadBaselineModel`, then the existing
+  `ImportModel` validation/loading flow on `.models/{task}/baseline.zip`. Returns
+  ordinary model metadata plus `baseline_task` and `reused`. The first request
+  registers the model; repeated or simultaneous requests reuse that registration.
+  Deleting the registration permits a fresh load; the baseline source ZIP is never
+  deleted. There is no browser upload or implicit network download for this route.
+
+`create_app(baseline_root=...)` can override the baseline catalog directory. Missing
+bundles return 404, unsupported task names return 422, and invalid/cross-task
+bundles return 422. No task-specific duplicate loader or inference implementation
+is required.

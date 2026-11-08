@@ -11,6 +11,9 @@ from starlette.background import BackgroundTask
 from safetensors import SafetensorError
 from application.use_cases.models import ImportModel, PredictModel
 from domain.entities.models import FAMILIES, OUTPUT_CONTRACTS
+from domain.entities.datasets.common import CyberTask
+from infrastructure.adapters.models.baselines import BaselineUnavailable
+from application.use_cases.models.baselines import ListBaselineModels
 from infrastructure.adapters.models.store import ModelNotFound
 from infrastructure.adapters.models.runtime import ModelRuntimeUnavailable
 from infrastructure.adapters.preprocessing.artifact_store import ArtifactUnavailable
@@ -19,7 +22,7 @@ from infrastructure.adapters.preprocessing.artifact_store import ArtifactUnavail
 def model_errors():
     try:
         yield
-    except ModelNotFound as error:
+    except (ModelNotFound, BaselineUnavailable) as error:
         raise HTTPException(404, str(error)) from error
     except (ModelRuntimeUnavailable, ArtifactUnavailable, ImportError) as error:
         raise HTTPException(503, str(error)) from error
@@ -38,7 +41,7 @@ class PredictRequest(BaseModel):
     preprocessed_id: str = Field(min_length=1)
 
 
-def create_router(store, runtime, dataset_sessions, results=None, artifacts=None, storage_lock=None):
+def create_router(store, runtime, dataset_sessions, results=None, artifacts=None, storage_lock=None, baseline_catalog=None, baseline_loader=None):
     @asynccontextmanager
     async def lifespan(app):
         try:
@@ -48,6 +51,19 @@ def create_router(store, runtime, dataset_sessions, results=None, artifacts=None
 
     storage_lock = storage_lock or RLock()
     router = APIRouter(prefix='/models', tags=['models'], lifespan=lifespan)
+
+    @router.get('/baselines')
+    def list_baselines():
+        if baseline_catalog is None: raise HTTPException(503, 'Baseline catalog is not configured')
+        with model_errors():
+            return ListBaselineModels(baseline_catalog).execute()
+
+    @router.post('/baselines/{task}/load')
+    def load_baseline(task: CyberTask):
+        if baseline_loader is None: raise HTTPException(503, 'Baseline loader is not configured')
+        with model_errors():
+            model, reused = baseline_loader.execute(task.value)
+            return dict(describe(model), reused=reused, baseline_task=task.value)
 
     @router.get('/capabilities')
     def capabilities():
